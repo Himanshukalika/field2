@@ -3,8 +3,6 @@
 import { NextPage } from 'next';
 import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { useAppSelector, useAppDispatch } from './redux/hooks';
-import { selectTotalArea, updateTotalArea } from './redux/features/mapSlice';
 
 // Dynamically import MapComponent with no SSR
 const MapComponent = dynamic(
@@ -20,19 +18,18 @@ const MapComponent = dynamic(
 );
 
 const Home: NextPage = () => {
-  const totalArea = useAppSelector(selectTotalArea);
-  const dispatch = useAppDispatch();
+  const [area, setArea] = useState<number>(0);
 
   const handleAreaUpdate = useCallback((newArea: number) => {
-    dispatch(updateTotalArea(newArea));
-  }, [dispatch]);
+    setArea(newArea);
+  }, []);
 
   return (
     <main className="min-h-screen" suppressHydrationWarning>
       <MapComponent onAreaUpdate={handleAreaUpdate} />
-      {totalArea > 0 && (
-        <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg">
-          <p>Total Area: {totalArea.toFixed(2)} hectares</p>
+      {area > 0 && (
+        <div className="fixed hidden bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg">
+          <p>Total Area: {area.toFixed(2)} hectares</p>
         </div>
       )}
     </main>

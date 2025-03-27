@@ -3,46 +3,23 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faFileImport, faDrawPolygon, faRuler, faMapMarker } from '@fortawesome/free-solid-svg-icons';
-import { useAppDispatch, useAppSelector } from '../../redux/hooks';
-import { selectShowCreateMenu, toggleCreateMenu, setCreateMenu, selectCreateMenuOption } from '../../redux/features/mapSlice';
 
 interface CreateMenuProps {
-  showMenu?: boolean; // Make optional since we'll use Redux
-  onToggleMenu?: () => void; // Make optional
-  onOptionSelect?: (option: 'import' | 'field' | 'distance' | 'marker') => void; // Make optional
+  showMenu: boolean;
+  onToggleMenu: () => void;
+  onOptionSelect: (option: 'import' | 'field' | 'distance' | 'marker') => void;
 }
 
 const CreateMenu: React.FC<CreateMenuProps> = ({
-  showMenu: propShowMenu,
+  showMenu,
   onToggleMenu,
   onOptionSelect
 }) => {
-  const dispatch = useAppDispatch();
-  const reduxShowMenu = useAppSelector(selectShowCreateMenu);
-  
-  // Use prop if provided, otherwise use Redux state
-  const showMenu = propShowMenu !== undefined ? propShowMenu : reduxShowMenu;
-
   // Function to handle option selection and auto-close menu
   const handleOptionSelect = (option: 'import' | 'field' | 'distance' | 'marker') => {
-    // Close the menu immediately in all cases
-    dispatch(setCreateMenu(false));
-    
-    if (onOptionSelect) {
-      // If external handler is provided, call it
-      onOptionSelect(option);
-    } else {
-      // Otherwise use Redux action
-      dispatch(selectCreateMenuOption(option));
-    }
-  };
-  
-  const handleToggleMenu = () => {
-    if (onToggleMenu) {
-      onToggleMenu();
-    } else {
-      dispatch(toggleCreateMenu());
-    }
+    onOptionSelect(option);
+    // Auto-close the menu after selecting an option
+    onToggleMenu();
   };
 
   return (
@@ -80,7 +57,7 @@ const CreateMenu: React.FC<CreateMenuProps> = ({
         </div>
       )}
       <button
-        onClick={handleToggleMenu}
+        onClick={onToggleMenu}
         className={`rounded-full shadow-lg p-4 transition-all duration-300 transform ${
           showMenu ? 'bg-red-500 text-white rotate-45' : 'bg-green-500 text-white'
         }`}

@@ -9,25 +9,16 @@ import {
   faMountain,
   faSatellite
 } from '@fortawesome/free-solid-svg-icons';
-import { useAppDispatch, useAppSelector } from '../../redux/hooks';
-import { selectMapType, setMapType } from '../../redux/features/mapSlice';
 
 type MapType = 'hybrid' | 'satellite' | 'roadmap' | 'terrain';
 
 interface MapTypeMenuProps {
-  currentType?: MapType; // Make optional since we'll use Redux
-  onTypeChange?: (type: MapType) => void; // Make optional since we'll use Redux
+  currentType: MapType;
+  onTypeChange: (type: MapType) => void;
 }
 
 const MapTypeMenu = ({ currentType, onTypeChange }: MapTypeMenuProps) => {
   const [showMenu, setShowMenu] = useState(false);
-  
-  // Get map type from Redux if not provided as prop
-  const reduxMapType = useAppSelector(selectMapType);
-  const dispatch = useAppDispatch();
-  
-  // Use prop if provided, otherwise use Redux state
-  const activeMapType = currentType || reduxMapType;
 
   const mapTypes = [
     { type: 'hybrid' as MapType, label: 'Hybrid', icon: faEarth },
@@ -35,16 +26,6 @@ const MapTypeMenu = ({ currentType, onTypeChange }: MapTypeMenuProps) => {
     { type: 'roadmap' as MapType, label: 'Street', icon: faRoad },
     { type: 'terrain' as MapType, label: 'Terrain', icon: faMountain },
   ];
-
-  const handleTypeChange = (type: MapType) => {
-    // Use provided callback if available, otherwise dispatch Redux action
-    if (onTypeChange) {
-      onTypeChange(type);
-    } else {
-      dispatch(setMapType(type));
-    }
-    setShowMenu(false);
-  };
 
   return (
     <div className="relative">
@@ -63,9 +44,12 @@ const MapTypeMenu = ({ currentType, onTypeChange }: MapTypeMenuProps) => {
           {mapTypes.map(({ type, label, icon }) => (
             <button
               key={type}
-              onClick={() => handleTypeChange(type)}
+              onClick={() => {
+                onTypeChange(type);
+                setShowMenu(false);
+              }}
               className={`w-full text-white p-3 flex items-center gap-3 hover:bg-gray-800 transition-colors ${
-                activeMapType === type ? 'bg-gray-800' : ''
+                currentType === type ? 'bg-gray-800' : ''
               }`}
             >
               <FontAwesomeIcon icon={icon} className="h-5 w-5" />
