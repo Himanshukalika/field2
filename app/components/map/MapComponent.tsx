@@ -75,6 +75,482 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   const [redoStack, setRedoStack] = useState<google.maps.LatLng[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Add default marker scale state
+  const [defaultMarkerScale, setDefaultMarkerScale] = useState(5.0);
+
+  // Add a function to clear all red markers - moved up to avoid reference before declaration
+  const clearAllRedMarkers = useCallback(() => {
+    // Get all vertex markers
+    let allMarkers: google.maps.Marker[] = [];
+    
+    // Add markers from active drawing
+    if (window.tempMarkersRef) {
+      allMarkers = [...allMarkers, ...window.tempMarkersRef];
+    }
+    
+    // Add markers from completed polygons
+    fieldPolygons.forEach(polygon => {
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      allMarkers = [...allMarkers, ...vertexMarkers, ...edgeMarkers];
+    });
+    
+    // Find and remove any drag markers
+    allMarkers.forEach(marker => {
+      const dragMarker = marker.get('dragMarker');
+      if (dragMarker) {
+        dragMarker.setMap(null);
+        marker.set('dragMarker', null);
+        marker.setOpacity(1);
+      }
+    });
+    
+    // Reset active vertex reference
+    activeVertexMarkerRef.current = null;
+  }, [fieldPolygons]);
+
+  // Define onPolygonComplete function early to avoid linter errors
+  const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
+    // Add the new polygon to our state
+    setFieldPolygons(prev => [...prev, polygon]);
+    
+    // Disable drawing mode after polygon is complete
+    setIsDrawingMode(false);
+    
+    // Make sure to reset any active vertex marker
+    if (activeVertexMarkerRef.current) {
+      const dragMarker = activeVertexMarkerRef.current.get('dragMarker');
+      if (dragMarker) {
+        dragMarker.setMap(null);
+      }
+      activeVertexMarkerRef.current = null;
+    }
+    
+    // Create draggable vertex markers for the completed polygon
+    const path = polygon.getPath();
+    const vertexMarkers: google.maps.Marker[] = [];
+    
+    // Function to add/update edge markers for the polygon
+    const addEdgeMarkers = () => {
+      // Remove existing edge markers
+      const oldMarkers = polygon.get('edgeMarkers') || [];
+      oldMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+        marker.setMap(null);
+      });
+
+      // Create new edge markers
+      const newEdgeMarkers: (google.maps.Marker | google.maps.OverlayView)[] = [];
+      const path = polygon.getPath();
+      
+      for (let i = 0; i < path.getLength(); i++) {
+        const p1 = path.getAt(i);
+        const p2 = path.getAt((i + 1) % path.getLength());
+        
+        // Calculate midpoint
+        const midLat = (p1.lat() + p2.lat()) / 2;
+        const midLng = (p1.lng() + p2.lng()) / 2;
+        const midpoint = new google.maps.LatLng(midLat, midLng);
+        
+        // Calculate initial distance
+        const distance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+        const distanceText = distance < 1000 
+          ? `${Math.round(distance)}m`
+          : `${(distance / 1000).toFixed(2)}km`;
+        
+        // Calculate appropriate circle scale based on distance
+        let circleScale = defaultMarkerScale;
+        
+        // Dynamically adjust scale based on distance
+        if (distance > 5000) { // More than 5km
+          circleScale = 7;
+        } else if (distance < 5) { // Less than 5m
+          circleScale = 2;
+        } else if (distance < 10) { // Less than 10m
+          circleScale = 3;
+        } else if (distance < 100) { // Less than 100m
+          circleScale = 4;
+        }
+        
+        // Calculate angle between points
+        let angle = Math.atan2(
+          p2.lng() - p1.lng(),
+          p2.lat() - p1.lat()
+        ) * (180 / Math.PI);
+
+        // We're removing the angle rotation to keep labels straight
+        angle = 0; // Always keep text straight
+
+        // Handler for distance changes
+        const handleDistanceChange = (newDistance: number) => {
+          // Calculate the ratio of new distance to current distance
+          const currentDistance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+          const ratio = newDistance / currentDistance;
+
+          // Calculate new position for p2 by extending the line
+          const lat = p1.lat() + (p2.lat() - p1.lat()) * ratio;
+          const lng = p1.lng() + (p2.lng() - p1.lng()) * ratio;
+          const newPosition = new google.maps.LatLng(lat, lng);
+
+          // Update vertex position in polygon path
+          const nextIndex = (i + 1) % path.getLength();
+          path.setAt(nextIndex, newPosition);
+          
+          // Update vertex marker position if it exists
+          const markers = polygon.get('vertexMarkers') || [];
+          if (markers[nextIndex]) {
+            markers[nextIndex].setPosition(newPosition);
+          }
+
+          // Update edge markers
+          addEdgeMarkers();
+        };
+
+        // Create overlay with distance change handler if DistanceOverlayRef is available
+        if (DistanceOverlayRef.current) {
+          const overlay = new DistanceOverlayRef.current(
+            midpoint,
+            distanceText,
+            angle,
+            handleDistanceChange
+          );
+          overlay.setMap(map);
+          newEdgeMarkers.push(overlay as google.maps.Marker | google.maps.OverlayView);
+        }
+        
+        // Create a clickable edge marker at midpoint (not directly draggable)
+        const edgeMarker = new google.maps.Marker({
+          position: midpoint,
+          map: map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: circleScale,
+            fillColor: '#FFFFFF',
+            fillOpacity: 0.5,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 2,
+          },
+          draggable: false, // Not directly draggable
+          zIndex: 2
+        });
+        
+        // Store which edge this marker is for
+        edgeMarker.set('edgeIndex', i);
+        edgeMarker.set('parentPolygon', polygon);
+        
+        // Add click listener to show draggable red marker
+        edgeMarker.addListener('click', () => {
+          // Clear any existing red markers first
+          clearAllRedMarkers();
+          
+          const position = edgeMarker.getPosition();
+          if (!position) return;
+          
+          // Create draggable red marker
+          const dragMarker = new google.maps.Marker({
+            position: position,
+            map: map,
+            icon: {
+              path: LOCATION_MARKER_PATH,
+              fillColor: '#FF0000',
+              fillOpacity: 0.2,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 1,
+              scale: defaultMarkerScale,
+              anchor: new google.maps.Point(12, 22),
+              rotation: MARKER_ROTATION
+            },
+            draggable: true,
+            crossOnDrag: false,
+            zIndex: 3
+          });
+          
+          // Store the drag marker reference
+          edgeMarker.set('dragMarker', dragMarker);
+          
+          // Set this as the active vertex marker
+          activeVertexMarkerRef.current = edgeMarker;
+          
+          // Hide the white marker
+          edgeMarker.setOpacity(0);
+          
+          // Add drag listener
+          dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
+            if (!e.latLng) return;
+            const index = edgeMarker.get('edgeIndex');
+            if (typeof index === 'number') {
+              // Update the vertex in the polygon path
+              path.setAt(index, e.latLng);
+              
+              // Update the original marker position too (even while invisible)
+              edgeMarker.setPosition(e.latLng);
+              
+              // Update edge markers
+              addEdgeMarkers();
+            }
+          });
+          
+          // Add dragend listener to clean up
+          dragMarker.addListener('dragend', () => {
+            // Clean up the drag marker
+            if (dragMarker) {
+              dragMarker.setMap(null);
+            }
+            edgeMarker.set('dragMarker', null);
+            edgeMarker.setOpacity(1);
+            activeVertexMarkerRef.current = null;
+          });
+        });
+        
+        newEdgeMarkers.push(edgeMarker);
+      }
+      
+      polygon.set('edgeMarkers', newEdgeMarkers);
+    };
+    
+    // Store the addEdgeMarkers function with the polygon for later use
+    polygon.set('addEdgeMarkers', addEdgeMarkers);
+    
+    // Create vertex markers
+    for (let i = 0; i < path.getLength(); i++) {
+      const vertex = path.getAt(i);
+      const marker = new google.maps.Marker({
+        position: vertex,
+        map: map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 7,
+          fillColor: '#FFFFFF',
+          fillOpacity: 0.5,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 2,
+        },
+        draggable: false,
+        zIndex: 2
+      });
+
+      // Store the vertex index directly in the marker for easier reference
+      marker.set('vertexIndex', i);
+      marker.set('parentPolygon', polygon);
+
+      // Add click handler to show draggable red marker
+      marker.addListener('click', () => {
+        // Clear any existing red markers first
+        clearAllRedMarkers();
+        
+        const position = marker.getPosition();
+        if (!position) return;
+        
+        // Create draggable red marker
+        const dragMarker = new google.maps.Marker({
+          position: position,
+          map: map,
+          icon: {
+            path: LOCATION_MARKER_PATH,
+            fillColor: '#FF0000',
+            fillOpacity: 0.2,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 1,
+            scale: defaultMarkerScale,
+            anchor: new google.maps.Point(12, 22),
+            rotation: MARKER_ROTATION
+          },
+          draggable: true,
+          crossOnDrag: false,
+          zIndex: 3
+        });
+        
+        // Store the drag marker reference
+        marker.set('dragMarker', dragMarker);
+        
+        // Set this as the active vertex marker
+        activeVertexMarkerRef.current = marker;
+        
+        // Hide the white marker
+        marker.setOpacity(0);
+        
+        // Add drag listener
+        dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return;
+          const idx = marker.get('vertexIndex');
+          if (typeof idx === 'number') {
+            // Update the vertex in the polygon path
+            path.setAt(idx, e.latLng);
+            
+            // Update the original marker position too (even while invisible)
+            marker.setPosition(e.latLng);
+            
+            // Update edge markers
+            addEdgeMarkers();
+          }
+        });
+        
+        // Add dragend listener to clean up
+        dragMarker.addListener('dragend', () => {
+          // Clean up the drag marker
+          if (dragMarker) {
+            dragMarker.setMap(null);
+          }
+          marker.set('dragMarker', null);
+          marker.setOpacity(1);
+          activeVertexMarkerRef.current = null;
+        });
+      });
+
+      vertexMarkers.push(marker);
+    }
+
+    // Store vertex markers with the polygon for cleanup
+    polygon.set('vertexMarkers', vertexMarkers);
+
+    // Add listener to update vertex markers when polygon is modified
+    google.maps.event.addListener(polygon.getPath(), 'insert_at', (index: number) => {
+      const vertex = path.getAt(index);
+      if (!vertex) return;
+      
+      const marker = new google.maps.Marker({
+        position: vertex,
+        map: map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 7,
+          fillColor: '#FFFFFF',
+          fillOpacity: 0.5,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 2,
+        },
+        draggable: false,
+        zIndex: 2
+      });
+
+      // Store the vertex index directly in the marker
+      marker.set('vertexIndex', index);
+      marker.set('parentPolygon', polygon);
+
+      // Add click handler to show draggable red marker
+      marker.addListener('click', () => {
+        // Clear any existing red markers first
+        clearAllRedMarkers();
+        
+        const position = marker.getPosition();
+        if (!position) return;
+        
+        // Create draggable red marker
+        const dragMarker = new google.maps.Marker({
+          position: position,
+          map: map,
+          icon: {
+            path: LOCATION_MARKER_PATH,
+            fillColor: '#FF0000',
+            fillOpacity: 0.2,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 1,
+            scale: defaultMarkerScale,
+            anchor: new google.maps.Point(12, 22),
+            rotation: MARKER_ROTATION
+          },
+          draggable: true,
+          crossOnDrag: false,
+          zIndex: 3
+        });
+        
+        // Store the drag marker reference
+        marker.set('dragMarker', dragMarker);
+        
+        // Set this as the active vertex marker
+        activeVertexMarkerRef.current = marker;
+        
+        // Hide the white marker
+        marker.setOpacity(0);
+        
+        // Add drag listener
+        dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return;
+          const idx = marker.get('vertexIndex');
+          if (typeof idx === 'number') {
+            // Update the vertex in the polygon path
+            path.setAt(idx, e.latLng);
+            
+            // Update the original marker position too (even while invisible)
+            marker.setPosition(e.latLng);
+            
+            // Update edge markers
+            addEdgeMarkers();
+          }
+        });
+        
+        // Add dragend listener to clean up
+        dragMarker.addListener('dragend', () => {
+          // Clean up the drag marker
+          if (dragMarker) {
+            dragMarker.setMap(null);
+          }
+          marker.set('dragMarker', null);
+          marker.setOpacity(1);
+          activeVertexMarkerRef.current = null;
+        });
+      });
+
+      const markers = polygon.get('vertexMarkers') || [];
+      markers.splice(index, 0, marker);
+      polygon.set('vertexMarkers', markers);
+      
+      // Update all vertex indices after insertion
+      for (let i = 0; i < markers.length; i++) {
+        markers[i].set('vertexIndex', i);
+      }
+    });
+
+    // Add listeners for other path modifications
+    google.maps.event.addListener(polygon.getPath(), 'remove_at', (index: number) => {
+      const markers = polygon.get('vertexMarkers') || [];
+      // Remove the marker associated with this vertex
+      if (index < markers.length) {
+        markers[index].setMap(null);
+        markers.splice(index, 1);
+      }
+      
+      // Update all vertex indices after removal
+      for (let i = 0; i < markers.length; i++) {
+        markers[i].set('vertexIndex', i);
+      }
+      
+      polygon.set('vertexMarkers', markers);
+      addEdgeMarkers();
+    });
+
+    google.maps.event.addListener(polygon.getPath(), 'set_at', (index: number) => {
+      const markers = polygon.get('vertexMarkers') || [];
+      const vertex = path.getAt(index);
+      if (vertex && index < markers.length) {
+        markers[index].setPosition(vertex);
+      }
+      addEdgeMarkers();
+    });
+
+    // Add edge markers initially
+    addEdgeMarkers();
+    
+    // Make the polygon non-editable by default
+    polygon.setEditable(false);
+    polygon.setDraggable(false);
+    
+    // Hide all vertex markers initially
+    vertexMarkers.forEach((marker: google.maps.Marker) => {
+      marker.setMap(null);
+    });
+    
+    // Hide all edge markers initially
+    const edgeMarkers = polygon.get('edgeMarkers') || [];
+    edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+      marker.setMap(null);
+    });
+    
+    // Show the create menu again so user can create another field if desired
+    setShowCreateMenu(true);
+    
+    return polygon;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, defaultMarkerScale]);
 
   // Add a helper function to store the current state in the undo stack
   const saveToUndoStack = useCallback((vertices: google.maps.LatLng[]) => {
@@ -118,13 +594,36 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         const numericValue = parseFloat(this.content.replace(/[^0-9.]/g, ''));
         const unit = this.content.includes('km') ? 'km' : 'm';
         
+        // Calculate appropriate font size based on the distance value
+        let fontSize = '14px';
+        let padding = '6px 10px';
+        
+        // Dynamically adjust size based on distance
+        if (unit === 'km') {
+          if (numericValue > 5) {
+            fontSize = '16px';
+            padding = '8px 12px';
+          } else if (numericValue < 0.5) {
+            fontSize = '12px';
+            padding = '4px 8px';
+          }
+        } else { // meters
+          if (numericValue > 1000) {
+            fontSize = '16px';
+            padding = '8px 12px';
+          } else if (numericValue < 100) {
+            fontSize = '12px';
+            padding = '4px 8px';
+          }
+        }
+        
         div.innerHTML = `
           <div style="
             background: rgba(0, 0, 0, 0.7);
             color: white;
-            padding: 6px 10px;
+            padding: ${padding};
             border-radius: 8px;
-            font-size: 14px;
+            font-size: ${fontSize};
             font-weight: 600;
             text-align: center;
             min-width: 60px;
@@ -140,11 +639,11 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               step="${unit === 'km' ? '0.01' : '1'}"
               min="0"
               style="
-                width: 50px;
+                width: ${numericValue.toString().length * 10 + 20}px;
                 background: transparent;
                 border: none;
                 color: white;
-                font-size: 14px;
+                font-size: ${fontSize};
                 text-align: right;
                 outline: none;
                 padding: 0;
@@ -272,432 +771,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     }
   }, [map]);
 
-  // Add polygon complete handler
-  const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
-    // Add the new polygon to our state
-    setFieldPolygons(prev => [...prev, polygon]);
-    
-    // Disable drawing mode after polygon is complete
-    setIsDrawingMode(false);
-    
-    // Make sure to reset any active vertex marker
-    if (activeVertexMarkerRef.current) {
-      const dragMarker = activeVertexMarkerRef.current.get('dragMarker');
-      if (dragMarker) {
-        dragMarker.setMap(null);
-      }
-      activeVertexMarkerRef.current = null;
-    }
-    
-    // Create draggable vertex markers for the completed polygon
-    const path = polygon.getPath();
-    const vertexMarkers: google.maps.Marker[] = [];
-    
-    // Function to add/update edge markers for the polygon
-    const addEdgeMarkers = () => {
-      // Remove existing edge markers
-      const oldMarkers = polygon.get('edgeMarkers') || [];
-      oldMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-        marker.setMap(null);
-      });
-
-      // Create new edge markers
-      const newEdgeMarkers: (google.maps.Marker | google.maps.OverlayView)[] = [];
-      const path = polygon.getPath();
-      
-      for (let i = 0; i < path.getLength(); i++) {
-        const p1 = path.getAt(i);
-        const p2 = path.getAt((i + 1) % path.getLength());
-        
-        // Calculate midpoint
-        const midLat = (p1.lat() + p2.lat()) / 2;
-        const midLng = (p1.lng() + p2.lng()) / 2;
-        const midpoint = new google.maps.LatLng(midLat, midLng);
-        
-        // Calculate distance
-        const distance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-        const distanceText = distance < 1000 
-          ? `${Math.round(distance)}m`
-          : `${(distance / 1000).toFixed(2)}km`;
-        
-        // Calculate angle between points
-        let angle = Math.atan2(
-          p2.lng() - p1.lng(),
-          p2.lat() - p1.lat()
-        ) * (180 / Math.PI);
-
-        // We're removing the angle rotation to keep labels straight
-        angle = 0; // Always keep text straight
-
-        // Handler for distance changes
-        const handleDistanceChange = (newDistance: number) => {
-          // Calculate the ratio of new distance to current distance
-          const currentDistance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-          const ratio = newDistance / currentDistance;
-
-          // Calculate new position for p2 by extending the line
-          const lat = p1.lat() + (p2.lat() - p1.lat()) * ratio;
-          const lng = p1.lng() + (p2.lng() - p1.lng()) * ratio;
-          const newPosition = new google.maps.LatLng(lat, lng);
-
-          // Update vertex position in polygon path
-          const nextIndex = (i + 1) % path.getLength();
-          path.setAt(nextIndex, newPosition);
-          
-          // Update vertex marker position if it exists
-          const markers = polygon.get('vertexMarkers') || [];
-          if (markers[nextIndex]) {
-            markers[nextIndex].setPosition(newPosition);
-          }
-
-          // Update edge markers
-          addEdgeMarkers();
-        };
-
-        // Create overlay with distance change handler if DistanceOverlayRef is available
-        if (DistanceOverlayRef.current) {
-          const overlay = new DistanceOverlayRef.current(
-            midpoint,
-            distanceText,
-            angle,
-            handleDistanceChange
-          );
-          overlay.setMap(map);
-          newEdgeMarkers.push(overlay as google.maps.Marker | google.maps.OverlayView);
-        }
-        
-        // Create a clickable edge marker at midpoint (not directly draggable)
-        const edgeMarker = new google.maps.Marker({
-          position: midpoint,
-          map: map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 5,
-            fillColor: '#FFFFFF',
-            fillOpacity: 0.5,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 2,
-          },
-          draggable: false, // Not directly draggable
-          zIndex: 2
-        });
-        
-        // Store which edge this marker is for
-        edgeMarker.set('edgeIndex', i);
-        edgeMarker.set('parentPolygon', polygon);
-        
-        // Add click listener to show draggable red marker
-        edgeMarker.addListener('click', () => {
-          // Clear any existing red markers first
-          clearAllRedMarkers();
-          
-          const position = edgeMarker.getPosition();
-          if (!position) return;
-          
-          // Create draggable red marker
-          const dragMarker = new google.maps.Marker({
-            position: position,
-            map: map,
-            icon: {
-              path: LOCATION_MARKER_PATH,
-              fillColor: '#FF0000',
-              fillOpacity: 0.2,
-              strokeColor: '#FFFFFF',
-              strokeWeight: 1,
-              scale: 5.0,
-              anchor: new google.maps.Point(12, 22),
-              rotation: MARKER_ROTATION
-            },
-            draggable: true,
-            crossOnDrag: false,
-            zIndex: 3
-          });
-          
-          // Store the drag marker reference
-          edgeMarker.set('dragMarker', dragMarker);
-          
-          // Set this as the active vertex marker
-          activeVertexMarkerRef.current = edgeMarker;
-          
-          // Hide the white marker
-          edgeMarker.setOpacity(0);
-          
-          // Add drag listener
-          dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
-            if (!e.latLng) return;
-            const index = edgeMarker.get('edgeIndex');
-            if (typeof index === 'number') {
-              // Update the vertex in the polygon path
-              path.setAt(index, e.latLng);
-              
-              // Update the original marker position too (even while invisible)
-              edgeMarker.setPosition(e.latLng);
-              
-              // Update edge markers
-              addEdgeMarkers();
-            }
-          });
-          
-          // Add dragend listener to clean up
-          dragMarker.addListener('dragend', () => {
-            // Clean up the drag marker
-            if (dragMarker) {
-              dragMarker.setMap(null);
-            }
-            edgeMarker.set('dragMarker', null);
-            edgeMarker.setOpacity(1);
-            activeVertexMarkerRef.current = null;
-          });
-        });
-        
-        newEdgeMarkers.push(edgeMarker);
-      }
-      
-      polygon.set('edgeMarkers', newEdgeMarkers);
-    };
-    
-    // Store the addEdgeMarkers function with the polygon for later use
-    polygon.set('addEdgeMarkers', addEdgeMarkers);
-    
-    // Create vertex markers
-    for (let i = 0; i < path.getLength(); i++) {
-      const vertex = path.getAt(i);
-      const marker = new google.maps.Marker({
-        position: vertex,
-        map: map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 7,
-          fillColor: '#FFFFFF',
-          fillOpacity: 0.5,
-          strokeColor: '#FFFFFF',
-          strokeWeight: 2,
-        },
-        draggable: false,
-        zIndex: 2
-      });
-
-      // Store the vertex index directly in the marker for easier reference
-      marker.set('vertexIndex', i);
-      marker.set('parentPolygon', polygon);
-
-      // Add click handler to show draggable red marker
-      marker.addListener('click', () => {
-        // Clear any existing red markers first
-        clearAllRedMarkers();
-        
-        const position = marker.getPosition();
-        if (!position) return;
-        
-        // Create draggable red marker
-        const dragMarker = new google.maps.Marker({
-          position: position,
-          map: map,
-          icon: {
-            path: LOCATION_MARKER_PATH,
-            fillColor: '#FF0000',
-            fillOpacity: 0.2,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 1,
-            scale: 5.0,
-            anchor: new google.maps.Point(12, 22),
-            rotation: MARKER_ROTATION
-          },
-          draggable: true,
-          crossOnDrag: false,
-          zIndex: 3
-        });
-        
-        // Store the drag marker reference
-        marker.set('dragMarker', dragMarker);
-        
-        // Set this as the active vertex marker
-        activeVertexMarkerRef.current = marker;
-        
-        // Hide the white marker
-        marker.setOpacity(0);
-        
-        // Add drag listener
-        dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
-          const idx = marker.get('vertexIndex');
-          if (typeof idx === 'number') {
-            // Update the vertex in the polygon path
-            path.setAt(idx, e.latLng);
-            
-            // Update the original marker position too (even while invisible)
-            marker.setPosition(e.latLng);
-            
-            // Update edge markers
-            addEdgeMarkers();
-          }
-        });
-        
-        // Add dragend listener to clean up
-        dragMarker.addListener('dragend', () => {
-          // Clean up the drag marker
-          if (dragMarker) {
-            dragMarker.setMap(null);
-          }
-          marker.set('dragMarker', null);
-          marker.setOpacity(1);
-          activeVertexMarkerRef.current = null;
-        });
-      });
-
-      vertexMarkers.push(marker);
-    }
-
-    // Store vertex markers with the polygon for cleanup
-    polygon.set('vertexMarkers', vertexMarkers);
-
-    // Add listener to update vertex markers when polygon is modified
-    google.maps.event.addListener(polygon.getPath(), 'insert_at', (index: number) => {
-      const vertex = path.getAt(index);
-      if (!vertex) return;
-      
-      const marker = new google.maps.Marker({
-        position: vertex,
-        map: map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 7,
-          fillColor: '#FFFFFF',
-          fillOpacity: 0.5,
-          strokeColor: '#FFFFFF',
-          strokeWeight: 2,
-        },
-        draggable: false,
-        zIndex: 2
-      });
-
-      // Store the vertex index directly in the marker
-      marker.set('vertexIndex', index);
-      marker.set('parentPolygon', polygon);
-
-      // Add click handler to show draggable red marker
-      marker.addListener('click', () => {
-        // Clear any existing red markers first
-        clearAllRedMarkers();
-        
-        const position = marker.getPosition();
-        if (!position) return;
-        
-        // Create draggable red marker
-        const dragMarker = new google.maps.Marker({
-          position: position,
-          map: map,
-          icon: {
-            path: LOCATION_MARKER_PATH,
-            fillColor: '#FF0000',
-            fillOpacity: 0.2,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 1,
-            scale: 5.0,
-            anchor: new google.maps.Point(12, 22),
-            rotation: MARKER_ROTATION
-          },
-          draggable: true,
-          crossOnDrag: false,
-          zIndex: 3
-        });
-        
-        // Store the drag marker reference
-        marker.set('dragMarker', dragMarker);
-        
-        // Set this as the active vertex marker
-        activeVertexMarkerRef.current = marker;
-        
-        // Hide the white marker
-        marker.setOpacity(0);
-        
-        // Add drag listener
-        dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
-          const idx = marker.get('vertexIndex');
-          if (typeof idx === 'number') {
-            // Update the vertex in the polygon path
-            path.setAt(idx, e.latLng);
-            
-            // Update the original marker position too (even while invisible)
-            marker.setPosition(e.latLng);
-            
-            // Update edge markers
-            addEdgeMarkers();
-          }
-        });
-        
-        // Add dragend listener to clean up
-        dragMarker.addListener('dragend', () => {
-          // Clean up the drag marker
-          if (dragMarker) {
-            dragMarker.setMap(null);
-          }
-          marker.set('dragMarker', null);
-          marker.setOpacity(1);
-          activeVertexMarkerRef.current = null;
-        });
-      });
-
-      const markers = polygon.get('vertexMarkers') || [];
-      markers.splice(index, 0, marker);
-      polygon.set('vertexMarkers', markers);
-      
-      // Update all vertex indices after insertion
-      for (let i = 0; i < markers.length; i++) {
-        markers[i].set('vertexIndex', i);
-      }
-    });
-
-    // Add listeners for other path modifications
-    google.maps.event.addListener(polygon.getPath(), 'remove_at', (index: number) => {
-      const markers = polygon.get('vertexMarkers') || [];
-      // Remove the marker associated with this vertex
-      if (index < markers.length) {
-        markers[index].setMap(null);
-        markers.splice(index, 1);
-      }
-      
-      // Update all vertex indices after removal
-      for (let i = 0; i < markers.length; i++) {
-        markers[i].set('vertexIndex', i);
-      }
-      
-      polygon.set('vertexMarkers', markers);
-      addEdgeMarkers();
-    });
-
-    google.maps.event.addListener(polygon.getPath(), 'set_at', (index: number) => {
-      const markers = polygon.get('vertexMarkers') || [];
-      const vertex = path.getAt(index);
-      if (vertex && index < markers.length) {
-        markers[index].setPosition(vertex);
-      }
-      addEdgeMarkers();
-    });
-
-    // Add edge markers initially
-    addEdgeMarkers();
-    
-    // Make the polygon non-editable by default
-    polygon.setEditable(false);
-    polygon.setDraggable(false);
-    
-    // Hide all vertex markers initially
-    vertexMarkers.forEach((marker: google.maps.Marker) => {
-      marker.setMap(null);
-    });
-    
-    // Hide all edge markers initially
-    const edgeMarkers = polygon.get('edgeMarkers') || [];
-    edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-      marker.setMap(null);
-    });
-    
-    // Show the create menu again so user can create another field if desired
-    setShowCreateMenu(true);
-  }, [map]);
-
   // Create menu handlers - moved after onPolygonComplete
   const handleCreateOption = useCallback((option: 'import' | 'field' | 'distance' | 'marker') => {
     setShowCreateMenu(false);
@@ -810,7 +883,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         // Handle marker placement
         break;
     }
-  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons]);
+  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, defaultMarkerScale]);
 
   // Handle place selection from search
   const handlePlaceSelect = useCallback((location: google.maps.LatLng) => {
@@ -879,6 +952,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             ? `${Math.round(distance)}m`
             : `${(distance / 1000).toFixed(2)}km`;
 
+          // Calculate appropriate circle scale based on distance
+          let circleScale = defaultMarkerScale;
+          
+          // Dynamically adjust scale based on distance
+          if (distance > 5000) { // More than 5km
+            circleScale = 7;
+          } else if (distance < 5) { // Less than 5m
+            circleScale = 2;
+          } else if (distance < 10) { // Less than 10m
+            circleScale = 3;
+          } else if (distance < 100) { // Less than 100m
+            circleScale = 4;
+          }
+          
           // Calculate angle between points
           let angle = Math.atan2(
             p2.lng() - p1.lng(),
@@ -941,7 +1028,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             map: map,
             icon: {
             path: google.maps.SymbolPath.CIRCLE,
-              scale: 5,
+              scale: circleScale,
               fillColor: '#FFFFFF',
               fillOpacity: 0.5,
               strokeColor: '#FFFFFF',
@@ -970,11 +1057,11 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               icon: {
                 path: LOCATION_MARKER_PATH,
                 fillColor: '#FF0000',
-              fillOpacity: 0.2,
+                fillOpacity: 0.2,
                 strokeColor: '#FFFFFF',
                 strokeWeight: 1,
-              scale: 5.0,
-              anchor: new google.maps.Point(12, 22),
+                scale: defaultMarkerScale,
+                anchor: new google.maps.Point(12, 22),
                 rotation: MARKER_ROTATION
               },
             draggable: true,
@@ -1112,7 +1199,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                         fillOpacity: 0.2,
                         strokeColor: '#FFFFFF',
                         strokeWeight: 1,
-                        scale: 5.0,
+                        scale: defaultMarkerScale,
                         anchor: new google.maps.Point(12, 22),
                         rotation: MARKER_ROTATION
                       },
@@ -1241,7 +1328,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         window.tempEdgeMarkersRef.push(marker as google.maps.Marker | google.maps.OverlayView);
       }
     }
-  }, [map, saveToUndoStack]);
+  }, [map, saveToUndoStack, defaultMarkerScale]);
 
   // Update the map click listener in setupAutoClosePolygon
   const setupAutoClosePolygon = useCallback(() => {
@@ -1386,7 +1473,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               fillOpacity: 0.2,
               strokeColor: '#FFFFFF',
               strokeWeight: 1,
-              scale: 5.0,
+              scale: defaultMarkerScale,
               anchor: new google.maps.Point(12, 22),
               rotation: MARKER_ROTATION
             },
@@ -1570,13 +1657,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         google.maps.event.removeListener(mapDblClickListener);
       }
     };
-  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, saveToUndoStack, updateEdgeMarkers]);
+  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, saveToUndoStack, updateEdgeMarkers, defaultMarkerScale]);
 
   // Use effect to setup auto-close polygon when drawing mode changes
   useEffect(() => {
     const cleanup = setupAutoClosePolygon();
     return cleanup;
-  }, [setupAutoClosePolygon, isDrawingMode, fieldPolygons, saveToUndoStack, updateEdgeMarkers]);
+  }, [setupAutoClosePolygon, isDrawingMode, fieldPolygons, saveToUndoStack, updateEdgeMarkers, defaultMarkerScale]);
 
   // Call onAreaUpdate whenever the area changes
   useEffect(() => {
@@ -1635,7 +1722,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           fillOpacity: 0.2,
           strokeColor: '#FFFFFF',
           strokeWeight: 1,
-          scale: 5.0,
+          scale: defaultMarkerScale,
           anchor: new google.maps.Point(12, 22),
           rotation: MARKER_ROTATION
         },
@@ -1738,38 +1825,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     
     window.tempMarkersRef.push(marker);
     return marker;
-  }, [map, updateEdgeMarkers, saveToUndoStack]);
-
-  // Add a function to clear all red markers
-  const clearAllRedMarkers = useCallback(() => {
-    // Get all vertex markers
-    let allMarkers: google.maps.Marker[] = [];
-    
-    // Add markers from active drawing
-    if (window.tempMarkersRef) {
-      allMarkers = [...allMarkers, ...window.tempMarkersRef];
-    }
-    
-    // Add markers from completed polygons
-    fieldPolygons.forEach(polygon => {
-      const vertexMarkers = polygon.get('vertexMarkers') || [];
-      const edgeMarkers = polygon.get('edgeMarkers') || [];
-      allMarkers = [...allMarkers, ...vertexMarkers, ...edgeMarkers];
-    });
-    
-    // Find and remove any drag markers
-    allMarkers.forEach(marker => {
-      const dragMarker = marker.get('dragMarker');
-      if (dragMarker) {
-        dragMarker.setMap(null);
-        marker.set('dragMarker', null);
-        marker.setOpacity(1);
-      }
-    });
-    
-    // Reset active vertex reference
-    activeVertexMarkerRef.current = null;
-  }, [fieldPolygons]);
+  }, [map, updateEdgeMarkers, saveToUndoStack, defaultMarkerScale]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
