@@ -773,7 +773,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     clickableIcons: false,
     disableDefaultUI: true,
     tilt: 0,
-    gestureHandling: 'cooperative',
+    gestureHandling: 'greedy',
     draggableCursor: 'grab',
     draggingCursor: 'move',
   }), [mapType]);
