@@ -7,8 +7,9 @@ import MapControls from './MapControls';
 import CreateMenu from './CreateMenu';
 import ZoomControls from './ZoomControls';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
+import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
+import PolygonToolsMenu from './PolygonToolsMenu';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -59,6 +60,17 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   const [userLocation, setUserLocation] = useState<google.maps.LatLng | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   
+  // Add states for polygon tools
+  const [selectedPolygonIndex, setSelectedPolygonIndex] = useState<number | null>(null);
+  const [showPolygonTools, setShowPolygonTools] = useState(false);
+  const [polygonStyles, setPolygonStyles] = useState({
+    strokeColor: strokeColor,
+    fillColor: polygonColor,
+    strokeWeight: strokeWeight,
+    fillOpacity: polygonFillOpacity,
+    fieldName: '',
+  });
+  
   // Add new state variables for drawing
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [fieldPolygons, setFieldPolygons] = useState<google.maps.Polygon[]>([]);
@@ -80,39 +92,84 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
   // Add a function to clear all red markers - moved up to avoid reference before declaration
   const clearAllRedMarkers = useCallback(() => {
-    // Get all vertex markers
-    let allMarkers: google.maps.Marker[] = [];
-    
-    // Add markers from active drawing
-    if (window.tempMarkersRef) {
-      allMarkers = [...allMarkers, ...window.tempMarkersRef];
-    }
-    
-    // Add markers from completed polygons
-    fieldPolygons.forEach(polygon => {
-      const vertexMarkers = polygon.get('vertexMarkers') || [];
-      const edgeMarkers = polygon.get('edgeMarkers') || [];
-      allMarkers = [...allMarkers, ...vertexMarkers, ...edgeMarkers];
-    });
-    
-    // Find and remove any drag markers
-    allMarkers.forEach(marker => {
-      const dragMarker = marker.get('dragMarker');
+    // Reset active vertex reference first
+    if (activeVertexMarkerRef.current) {
+      const dragMarker = activeVertexMarkerRef.current.get('dragMarker');
       if (dragMarker) {
         dragMarker.setMap(null);
-        marker.set('dragMarker', null);
-        marker.setOpacity(1);
+        activeVertexMarkerRef.current.set('dragMarker', null);
+        activeVertexMarkerRef.current.setOpacity(1);
       }
-    });
+      activeVertexMarkerRef.current = null;
+    }
     
-    // Reset active vertex reference
-    activeVertexMarkerRef.current = null;
+    // Clear any other red markers in temporary vertex markers
+    if (window.tempMarkersRef && Array.isArray(window.tempMarkersRef)) {
+      window.tempMarkersRef.forEach(marker => {
+        const dragMarker = marker.get('dragMarker');
+        if (dragMarker) {
+          dragMarker.setMap(null);
+          marker.set('dragMarker', null);
+          marker.setOpacity(1);
+        }
+      });
+    }
+    
+    // Clear any red markers in temporary edge markers
+    if (window.tempEdgeMarkersRef && Array.isArray(window.tempEdgeMarkersRef)) {
+      window.tempEdgeMarkersRef.forEach(marker => {
+        if (marker instanceof google.maps.Marker) {
+          const dragMarker = marker.get('dragMarker');
+          if (dragMarker) {
+            dragMarker.setMap(null);
+            marker.set('dragMarker', null);
+            marker.setOpacity(1);
+          }
+        }
+      });
+    }
+    
+    // Clear drag markers from all polygon markers
+    fieldPolygons.forEach(polygon => {
+      // Check vertex markers
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      vertexMarkers.forEach((marker: google.maps.Marker) => {
+        const dragMarker = marker.get('dragMarker');
+        if (dragMarker) {
+          dragMarker.setMap(null);
+          marker.set('dragMarker', null);
+          marker.setOpacity(1);
+        }
+      });
+      
+      // Check edge markers
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+        if (marker instanceof google.maps.Marker) {
+          const dragMarker = marker.get('dragMarker');
+          if (dragMarker) {
+            dragMarker.setMap(null);
+            marker.set('dragMarker', null);
+            marker.setOpacity(1);
+          }
+        }
+      });
+    });
   }, [fieldPolygons]);
 
   // Define onPolygonComplete function early to avoid linter errors
   const onPolygonComplete = useCallback((polygon: google.maps.Polygon) => {
     // Add the new polygon to our state
     setFieldPolygons(prev => [...prev, polygon]);
+    
+    // Store the initial styling properties
+    polygon.set('strokeColor', polygon.get('strokeColor') || strokeColor);
+    polygon.set('fillColor', polygon.get('fillColor') || polygonColor);
+    polygon.set('strokeWeight', polygon.get('strokeWeight') || strokeWeight);
+    polygon.set('fillOpacity', polygon.get('fillOpacity') || polygonFillOpacity);
+    polygon.set('fieldName', polygon.get('fieldName') || `Field ${fieldPolygons.length + 1}`);
+    
+    // Custom field label will be added by the useEffect hook that watches fieldPolygons
     
     // Disable drawing mode after polygon is complete
     setIsDrawingMode(false);
@@ -239,7 +296,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         
         // Add click listener to show draggable red marker
         edgeMarker.addListener('click', () => {
-          // Clear any existing red markers first
+          // Clear any existing red markers first - ensures all previous markers are removed
           clearAllRedMarkers();
           
           const position = edgeMarker.getPosition();
@@ -283,9 +340,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               
               // Update the original marker position too (even while invisible)
               edgeMarker.setPosition(e.latLng);
-              
-              // Update edge markers
-              addEdgeMarkers();
+            
+            // Update edge markers
+            addEdgeMarkers();
             }
           });
           
@@ -295,9 +352,17 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             if (dragMarker) {
               dragMarker.setMap(null);
             }
-            edgeMarker.set('dragMarker', null);
-            edgeMarker.setOpacity(1);
-            activeVertexMarkerRef.current = null;
+            
+            // Reset the marker if it still exists
+            if (edgeMarker && edgeMarker.getMap()) {
+              edgeMarker.set('dragMarker', null);
+              edgeMarker.setOpacity(1);
+            }
+            
+            // Clear the active reference if it's this marker
+            if (activeVertexMarkerRef.current === edgeMarker) {
+              activeVertexMarkerRef.current = null;
+            }
           });
         });
         
@@ -334,7 +399,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
       // Add click handler to show draggable red marker
       marker.addListener('click', () => {
-        // Clear any existing red markers first
+        // Clear any existing red markers first - thoroughly clean up before creating new ones
         clearAllRedMarkers();
         
         const position = marker.getPosition();
@@ -370,7 +435,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         
         // Add drag listener
         dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
+        if (!e.latLng) return;
           const idx = marker.get('vertexIndex');
           if (typeof idx === 'number') {
             // Update the vertex in the polygon path
@@ -380,19 +445,41 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             marker.setPosition(e.latLng);
             
             // Update edge markers
-            addEdgeMarkers();
-          }
+        addEdgeMarkers();
+        }
         });
         
         // Add dragend listener to clean up
         dragMarker.addListener('dragend', () => {
+          // Save state after moving vertex with red marker
+          const newState = [...window.tempVerticesRef];
+          setUndoStack(prev => [...prev, newState]);
+          setRedoStack([]); // Clear redo stack after a new action
+          // Force update canUndo/canRedo state immediately
+          setCanUndo(true);
+          setCanRedo(false);
+          
+          // Update the position of the original white marker
+          const finalPosition = dragMarker?.getPosition();
+          if (finalPosition) {
+            marker.setPosition(finalPosition);
+          }
+          
           // Clean up the drag marker
           if (dragMarker) {
             dragMarker.setMap(null);
           }
-          marker.set('dragMarker', null);
-          marker.setOpacity(1);
-          activeVertexMarkerRef.current = null;
+          
+          // Reset the marker if it still exists
+          if (marker && marker.getMap()) {
+            marker.set('dragMarker', null);
+            marker.setOpacity(1);
+          }
+          
+          // Clear the active reference if it's this marker
+          if (activeVertexMarkerRef.current === marker) {
+            activeVertexMarkerRef.current = null;
+          }
         });
       });
 
@@ -428,7 +515,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
       // Add click handler to show draggable red marker
       marker.addListener('click', () => {
-        // Clear any existing red markers first
+        // Clear any existing red markers first - thoroughly clean up before creating new ones
         clearAllRedMarkers();
         
         const position = marker.getPosition();
@@ -437,18 +524,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         // Create draggable red marker
         const dragMarker = new google.maps.Marker({
           position: position,
-          map: map,
-          icon: {
-            path: LOCATION_MARKER_PATH,
-            fillColor: '#FF0000',
-            fillOpacity: 0.2,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 1,
+        map: map,
+        icon: {
+          path: LOCATION_MARKER_PATH,
+          fillColor: '#FF0000',
+          fillOpacity: 0.2,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 1,
             scale: defaultMarkerScale,
             anchor: new google.maps.Point(12, 22),
             rotation: MARKER_ROTATION
-          },
-          draggable: true,
+        },
+        draggable: true,
           crossOnDrag: false,
           zIndex: 3
         });
@@ -464,29 +551,51 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         
         // Add drag listener
         dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
-          if (!e.latLng) return;
-          const idx = marker.get('vertexIndex');
-          if (typeof idx === 'number') {
+        if (!e.latLng) return;
+        const idx = marker.get('vertexIndex');
+        if (typeof idx === 'number') {
             // Update the vertex in the polygon path
-            path.setAt(idx, e.latLng);
+          path.setAt(idx, e.latLng);
             
             // Update the original marker position too (even while invisible)
             marker.setPosition(e.latLng);
             
             // Update edge markers
-            addEdgeMarkers();
-          }
+        addEdgeMarkers();
+        }
         });
         
         // Add dragend listener to clean up
         dragMarker.addListener('dragend', () => {
+          // Save state after moving vertex with red marker
+          const newState = [...window.tempVerticesRef];
+          setUndoStack(prev => [...prev, newState]);
+          setRedoStack([]); // Clear redo stack after a new action
+          // Force update canUndo/canRedo state immediately
+          setCanUndo(true);
+          setCanRedo(false);
+          
+          // Update the position of the original white marker
+          const finalPosition = dragMarker?.getPosition();
+          if (finalPosition) {
+            marker.setPosition(finalPosition);
+          }
+          
           // Clean up the drag marker
           if (dragMarker) {
             dragMarker.setMap(null);
           }
-          marker.set('dragMarker', null);
-          marker.setOpacity(1);
-          activeVertexMarkerRef.current = null;
+          
+          // Reset the marker if it still exists
+          if (marker && marker.getMap()) {
+            marker.set('dragMarker', null);
+            marker.setOpacity(1);
+          }
+          
+          // Clear the active reference if it's this marker
+          if (activeVertexMarkerRef.current === marker) {
+            activeVertexMarkerRef.current = null;
+          }
         });
       });
 
@@ -965,7 +1074,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           } else if (distance < 100) { // Less than 100m
             circleScale = 4;
           }
-          
+
           // Calculate angle between points
           let angle = Math.atan2(
             p2.lng() - p1.lng(),
@@ -1057,7 +1166,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               icon: {
                 path: LOCATION_MARKER_PATH,
                 fillColor: '#FF0000',
-                fillOpacity: 0.2,
+              fillOpacity: 0.2,
                 strokeColor: '#FFFFFF',
                 strokeWeight: 1,
                 scale: defaultMarkerScale,
@@ -1157,18 +1266,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                   // Create a new vertex marker with red location marker style instead of circle
                   const newVertexMarker = new google.maps.Marker({
                     position: finalPosition || position,
-                    map: map,
-                    icon: {
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 7,
-                      fillColor: '#FFFFFF',
-                      fillOpacity: 0.5,
-                      strokeColor: '#FFFFFF',
-                      strokeWeight: 2,
-                    },
+                map: map,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 7,
+                  fillColor: '#FFFFFF',
+                  fillOpacity: 0.5,
+                  strokeColor: '#FFFFFF',
+                  strokeWeight: 2,
+                },
                     draggable: false,
-                    zIndex: 2
-                  });
+                zIndex: 2
+              });
                   
                   // Add the same listeners to the new vertex
                   newVertexMarker.addListener('click', () => {
@@ -1827,6 +1936,512 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     return marker;
   }, [map, updateEdgeMarkers, saveToUndoStack, defaultMarkerScale]);
 
+  // Add a handler for polygon selection
+  const handlePolygonClick = useCallback((index: number) => {
+    // Only allow selection if not in drawing mode
+    if (!isDrawingMode) {
+      setSelectedPolygonIndex(index);
+      setShowPolygonTools(true);
+      
+      // Get current styles of the selected polygon
+      const polygon = fieldPolygons[index];
+      if (polygon) {
+        setPolygonStyles({
+          strokeColor: polygon.get('strokeColor') || strokeColor,
+          fillColor: polygon.get('fillColor') || polygonColor,
+          strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+          fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
+          fieldName: polygon.get('fieldName') || `Field ${index + 1}`,
+        });
+      }
+    }
+  }, [isDrawingMode, fieldPolygons]);
+
+  // Add handlers for polygon style changes
+  const handleChangeStrokeColor = useCallback((color: string) => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      polygon.setOptions({ strokeColor: color });
+      polygon.set('strokeColor', color);
+      setPolygonStyles(prev => ({ ...prev, strokeColor: color }));
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  const handleChangeFillColor = useCallback((color: string) => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      polygon.setOptions({ fillColor: color });
+      polygon.set('fillColor', color);
+      setPolygonStyles(prev => ({ ...prev, fillColor: color }));
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  const handleChangeStrokeWeight = useCallback((weight: number) => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      polygon.setOptions({ strokeWeight: weight });
+      polygon.set('strokeWeight', weight);
+      setPolygonStyles(prev => ({ ...prev, strokeWeight: weight }));
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  const handleChangeFillOpacity = useCallback((opacity: number) => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      polygon.setOptions({ fillOpacity: opacity });
+      polygon.set('fillOpacity', opacity);
+      setPolygonStyles(prev => ({ ...prev, fillOpacity: opacity }));
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  const handleToggleEditable = useCallback(() => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      const currentEditable = polygon.getEditable();
+      
+      // First hide all vertex/edge markers for all polygons
+      fieldPolygons.forEach((poly, index) => {
+        if (index !== selectedPolygonIndex) {
+          poly.setEditable(false);
+          poly.setDraggable(false);
+          
+          // Hide markers
+          const vertexMarkers = poly.get('vertexMarkers') || [];
+          vertexMarkers.forEach((marker: google.maps.Marker) => {
+            marker.setMap(null);
+          });
+          
+          const edgeMarkers = poly.get('edgeMarkers') || [];
+          edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+            marker.setMap(null);
+          });
+        }
+      });
+      
+      // Toggle editable state
+      const newEditable = !currentEditable;
+      polygon.setEditable(newEditable);
+      
+      // Show/hide markers based on editable state
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      
+      if (newEditable) {
+        // Show vertex markers
+        vertexMarkers.forEach((marker: google.maps.Marker) => {
+          marker.setMap(map);
+        });
+        
+        // Show edge markers for edge click & drag functionality
+        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+          marker.setMap(map);
+        });
+        
+        // The addEdgeMarkers function might be needed to update markers
+        const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
+        if (typeof addEdgeMarkersFn === 'function') {
+          addEdgeMarkersFn();
+        }
+      } else {
+        // Hide all markers
+        vertexMarkers.forEach((marker: google.maps.Marker) => {
+          marker.setMap(null);
+        });
+        
+        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+          marker.setMap(null);
+        });
+        
+        // Clear any active drag markers
+        clearAllRedMarkers();
+      }
+    }
+  }, [fieldPolygons, selectedPolygonIndex, map]);
+
+  const handleToggleDraggable = useCallback(() => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      const currentDraggable = polygon.getDraggable();
+      
+      // Toggle draggable state
+      polygon.setDraggable(!currentDraggable);
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  const handleDeletePolygon = useCallback(() => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      // Get the polygon to delete
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      
+      // Clean up any markers associated with this polygon
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      vertexMarkers.forEach((marker: google.maps.Marker) => {
+        marker.setMap(null);
+      });
+      
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+        marker.setMap(null);
+      });
+      
+      // Remove the custom label overlay
+      const overlay = polygon.get('labelOverlay') as any;
+      if (overlay && typeof overlay.setMap === 'function') {
+        overlay.setMap(null);
+      }
+      
+      const labelDiv = polygon.get('labelDiv') as HTMLDivElement;
+      if (labelDiv && labelDiv.parentElement) {
+        labelDiv.parentElement.removeChild(labelDiv);
+      }
+      
+      // Remove the polygon from the map
+      polygon.setMap(null);
+      
+      // Update the state - create a new array without the deleted polygon
+      setFieldPolygons(prev => prev.filter((_, index) => index !== selectedPolygonIndex));
+      
+      // Close the tools panel
+      setShowPolygonTools(false);
+      setSelectedPolygonIndex(null);
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  // Add a function to handle finishing the drawing
+  const handleFinishDrawing = useCallback(() => {
+    // Check if we have at least 3 vertices to make a polygon
+    if (window.tempVerticesRef && window.tempVerticesRef.length >= 3) {
+      // Create a polygon from current vertices
+      const polygon = new google.maps.Polygon({
+        map: map,
+        paths: window.tempVerticesRef,
+        strokeColor: strokeColor,
+        strokeWeight: strokeWeight,
+        fillColor: polygonColor,
+        fillOpacity: polygonFillOpacity,
+        editable: false,
+        draggable: false
+      });
+      
+      // Clean up temporary drawing objects
+        if (window.tempPolylineRef) {
+        window.tempPolylineRef.setMap(null);
+        window.tempPolylineRef = null;
+      }
+      
+      // Clean up temporary markers
+      if (window.tempMarkersRef) {
+        window.tempMarkersRef.forEach((marker: google.maps.Marker) => marker.setMap(null));
+        window.tempMarkersRef = [];
+      }
+      
+      if (window.tempEdgeMarkersRef) {
+        window.tempEdgeMarkersRef.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+          if (marker) {
+            marker.setMap(null);
+          }
+        });
+        window.tempEdgeMarkersRef = [];
+      }
+      
+      // Call onPolygonComplete to finish the process
+      onPolygonComplete(polygon);
+    } else {
+      // Show some feedback that we need at least 3 points
+      alert("Please add at least 3 points to create a field");
+    }
+  }, [map, onPolygonComplete, polygonColor, polygonFillOpacity, strokeColor, strokeWeight]);
+
+  // Add handler for field name changes
+  const handleChangeName = useCallback((name: string) => {
+    if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      polygon.set('fieldName', name);
+      setPolygonStyles(prev => ({ ...prev, fieldName: name }));
+      
+      // Update custom label overlay content
+      const overlay = polygon.get('labelOverlay') as any;
+      if (overlay && typeof overlay.updateContent === 'function') {
+        // Calculate area
+        const area = google.maps.geometry.spherical.computeArea(polygon.getPath());
+        const areaInHectares = area / 10000; // Convert to hectares
+        
+        // Update content
+        overlay.updateContent(name, areaInHectares);
+      }
+    }
+  }, [fieldPolygons, selectedPolygonIndex]);
+
+  // Function to add field label to center of polygon
+  const addFieldLabel = useCallback((polygon: google.maps.Polygon) => {
+    if (!map) return;
+    
+    // Remove existing label if any
+    const existingLabel = polygon.get('infoWindow') as google.maps.InfoWindow;
+    if (existingLabel) {
+      existingLabel.close();
+    }
+    
+    // Calculate center of polygon
+    const path = polygon.getPath();
+    const bounds = new google.maps.LatLngBounds();
+    path.forEach(point => bounds.extend(point));
+    const center = bounds.getCenter();
+    
+    // Calculate area
+    const area = google.maps.geometry.spherical.computeArea(path);
+    const areaInHectares = area / 10000; // Convert to hectares
+    
+    // Get field name
+    const fieldName = polygon.get('fieldName') || 'Field';
+    
+    // Create an InfoWindow as the label
+    const infoWindow = new google.maps.InfoWindow({
+      position: center,
+      disableAutoPan: true,
+      content: `
+        <div style="text-align: center; font-weight: bold;">
+          <div>${fieldName}</div>
+          <div style="font-size: 12px;">${areaInHectares.toFixed(2)} ha</div>
+        </div>
+      `
+    });
+    
+    // Remove the close button and make it non-interactive
+    infoWindow.addListener('domready', () => {
+      const closeButtons = document.querySelectorAll('.gm-ui-hover-effect');
+      closeButtons.forEach(button => {
+        (button as HTMLElement).style.display = 'none';
+      });
+      
+      // Find the content wrapper and remove the default InfoWindow styling
+      const infoWindowContent = document.querySelector('.gm-style-iw-d');
+      if (infoWindowContent) {
+        (infoWindowContent as HTMLElement).style.overflow = 'visible';
+        
+        // Remove padding from the container
+        const container = infoWindowContent.parentElement;
+        if (container) {
+          (container as HTMLElement).style.padding = '0';
+        }
+        
+        // Remove the default shadow/background
+        const background = container?.parentElement;
+        if (background) {
+          const children = background.children;
+          for (let i = 0; i < children.length; i++) {
+            if (i !== 0) { // Keep only the content, hide the shadows/background elements
+              (children[i] as HTMLElement).style.display = 'none';
+            }
+          }
+        }
+      }
+    });
+    
+    // Store the InfoWindow with the polygon and open it
+    polygon.set('infoWindow', infoWindow);
+    infoWindow.open(map);
+  }, [map]);
+
+  // Update field labels when needed
+  const updateFieldLabels = useCallback(() => {
+    fieldPolygons.forEach(polygon => {
+      addFieldLabel(polygon);
+    });
+  }, [fieldPolygons, addFieldLabel]);
+
+  // Use effect to update labels on map changes
+  useEffect(() => {
+    if (!map) return;
+    
+    // Update labels initially
+    updateFieldLabels();
+    
+    // Update labels on zoom or pan
+    const listeners = [
+      map.addListener('zoom_changed', updateFieldLabels),
+      map.addListener('dragend', updateFieldLabels)
+    ];
+    
+    return () => {
+      // Clean up listeners
+      listeners.forEach(listener => google.maps.event.removeListener(listener));
+      
+      // Close all info windows
+      fieldPolygons.forEach(polygon => {
+        const infoWindow = polygon.get('infoWindow') as google.maps.InfoWindow;
+        if (infoWindow) {
+          infoWindow.close();
+        }
+      });
+    };
+  }, [map, updateFieldLabels, fieldPolygons]);
+
+  // Add effect to update field labels
+  useEffect(() => {
+    if (!map || fieldPolygons.length === 0) return;
+    
+    // First, clean up any existing labels
+    fieldPolygons.forEach((polygon) => {
+      const existingLabel = polygon.get('labelDiv') as HTMLDivElement;
+      if (existingLabel) {
+        existingLabel.parentElement?.removeChild(existingLabel);
+      }
+      
+      // Also close any existing InfoWindows if they exist
+      const existingInfoWindow = polygon.get('infoWindow') as google.maps.InfoWindow;
+      if (existingInfoWindow) {
+        existingInfoWindow.close();
+        polygon.set('infoWindow', null);
+      }
+    });
+    
+    // Create custom overlays for all polygons
+    fieldPolygons.forEach((polygon, index) => {
+      // Calculate polygon center
+      const path = polygon.getPath();
+      const bounds = new google.maps.LatLngBounds();
+      path.forEach(point => bounds.extend(point));
+      const center = bounds.getCenter();
+      
+      // Calculate polygon area
+      const area = google.maps.geometry.spherical.computeArea(path);
+      const areaInHectares = area / 10000; // Convert to hectares
+      
+      // Get field name
+      const fieldName = polygon.get('fieldName') || `Field ${index + 1}`;
+      
+      // Create a custom overlay
+      class FieldLabelOverlay extends google.maps.OverlayView {
+        private position: google.maps.LatLng;
+        private fieldName: string;
+        private area: number;
+        private div: HTMLDivElement | null = null;
+        
+        constructor(position: google.maps.LatLng, fieldName: string, area: number) {
+          super();
+          this.position = position;
+          this.fieldName = fieldName;
+          this.area = area;
+          this.setMap(map);
+        }
+        
+        onAdd() {
+          // Create the div to hold the label
+          const div = document.createElement('div');
+          div.style.position = 'absolute';
+          div.style.backgroundColor = 'transparent';
+          div.style.padding = '0';
+          div.style.fontWeight = 'bold';
+          div.style.textAlign = 'center';
+          div.style.pointerEvents = 'none'; // Allow clicking through
+          div.style.whiteSpace = 'nowrap';
+          div.style.fontSize = '14px';
+          div.style.fontFamily = 'Arial, sans-serif';
+          div.style.textShadow = '0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white'; // Text shadow to make text readable on any background
+          div.innerHTML = `
+            <div style="color: black;">${this.fieldName}</div>
+            <div style="color: black; font-size: 12px;">${this.area.toFixed(2)} ha</div>
+          `;
+          
+          this.div = div;
+            
+          // Add the div to the overlay layer
+          const panes = this.getPanes();
+          if (panes) {
+            panes.overlayLayer.appendChild(div);
+          }
+          
+          // Store a reference to the div with the polygon
+          polygon.set('labelDiv', div);
+          polygon.set('labelOverlay', this);
+        }
+        
+        draw() {
+          if (!this.div) return;
+          
+          // Position the div on the map
+          const overlayProjection = this.getProjection();
+          const position = overlayProjection.fromLatLngToDivPixel(this.position);
+          
+          if (position) {
+            this.div.style.left = (position.x - (this.div.offsetWidth / 2)) + 'px';
+            this.div.style.top = (position.y - (this.div.offsetHeight / 2)) + 'px';
+          }
+        }
+        
+        onRemove() {
+          if (this.div) {
+            this.div.parentNode?.removeChild(this.div);
+            this.div = null;
+          }
+        }
+        
+        // Method to update content
+        updateContent(fieldName: string, area: number) {
+          this.fieldName = fieldName;
+          this.area = area;
+          
+          if (this.div) {
+            this.div.innerHTML = `
+              <div style="color: black;">${this.fieldName}</div>
+              <div style="color: black; font-size: 12px;">${this.area.toFixed(2)} ha</div>
+            `;
+          }
+        }
+        
+        // Method to update position
+        updatePosition(position: google.maps.LatLng) {
+          this.position = position;
+          this.draw();
+        }
+      }
+      
+      // Create a new label overlay
+      new FieldLabelOverlay(center, fieldName, areaInHectares);
+    });
+    
+    // Clean up function to remove overlays
+    return () => {
+      fieldPolygons.forEach((polygon) => {
+        const overlay = polygon.get('labelOverlay') as google.maps.OverlayView;
+        if (overlay) {
+          overlay.setMap(null);
+        }
+        
+        const div = polygon.get('labelDiv') as HTMLDivElement;
+        if (div) {
+          div.parentElement?.removeChild(div);
+        }
+      });
+    };
+  }, [fieldPolygons, map]);
+  
+  // Update label positions when the map is idle (after zoom/pan)
+  useEffect(() => {
+    if (!map) return;
+    
+    const listener = map.addListener('idle', () => {
+      fieldPolygons.forEach((polygon) => {
+        const overlay = polygon.get('labelOverlay') as any;
+        if (overlay && typeof overlay.updatePosition === 'function') {
+          // Recalculate center
+          const path = polygon.getPath();
+          const bounds = new google.maps.LatLngBounds();
+          path.forEach(point => bounds.extend(point));
+          const center = bounds.getCenter();
+          
+          // Update overlay position
+          overlay.updatePosition(center);
+        }
+      });
+    });
+    
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [fieldPolygons, map]);
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -1884,19 +2499,19 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                 key={index}
                 paths={polygon.getPath().getArray()}
                 options={{
-                  fillColor: polygonColor,  // Use the green color
-                  fillOpacity: polygonFillOpacity,
-                  strokeColor: strokeColor,  // Use the green color
-                  strokeWeight: strokeWeight,
-                  clickable: true, // Set to true to allow clicking through the polygon (to the map)
-                  editable: false, // Default to non-editable
-                  draggable: false, // Default to non-draggable
-                  zIndex: 1,
+                  fillColor: polygon.get('fillColor') || polygonColor,
+                  fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
+                  strokeColor: polygon.get('strokeColor') || strokeColor,
+                  strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+                  clickable: true,
+                  editable: polygon.getEditable(),
+                  draggable: polygon.getDraggable(),
+                  zIndex: selectedPolygonIndex === index ? 2 : 1,
                 }}
                 onClick={(e) => {
-                  // Only if we're in drawing mode, prevent default and let the click pass through to the map
+                  // If we're in drawing mode, let the click pass through
                   if (isDrawingMode) {
-                    e.stop(); // Stop event propagation to prevent Google Maps default behavior
+                    e.stop();
                     
                     // Manually forward the click to the map to add a vertex
                     if (e.latLng && map) {
@@ -1905,15 +2520,37 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                         stop: () => {} // Dummy function to match event interface
                       });
                     }
+                  } else {
+                    // Otherwise, select this polygon
+                    handlePolygonClick(index);
                   }
                 }}
               />
             ))}
           </GoogleMap>
 
+          {/* Add the PolygonToolsMenu component */}
+          <PolygonToolsMenu 
+            isOpen={showPolygonTools}
+            onClose={() => setShowPolygonTools(false)}
+            onChangeStrokeColor={handleChangeStrokeColor}
+            onChangeFillColor={handleChangeFillColor}
+            onChangeStrokeWeight={handleChangeStrokeWeight}
+            onChangeFillOpacity={handleChangeFillOpacity}
+            onChangeName={handleChangeName}
+            onDelete={handleDeletePolygon}
+            strokeColor={polygonStyles.strokeColor}
+            fillColor={polygonStyles.fillColor}
+            strokeWeight={polygonStyles.strokeWeight}
+            fillOpacity={polygonStyles.fillOpacity}
+            fieldName={polygonStyles.fieldName}
+            selectedPolygonIndex={selectedPolygonIndex}
+          />
+
           {/* Add undo/redo buttons */}
           {isDrawingMode && (
-            <div className="absolute top-20 left-4 flex gap-2">
+            <div className="absolute top-20 left-4 flex flex-col gap-2">
+              <div className="flex gap-2">
               <button
                 onClick={() => {
                   // Skip all state checks and directly execute handler with synchronous action
@@ -2038,6 +2675,19 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               >
                 <FontAwesomeIcon icon={faRedo} className="text-lg" />
               </button>
+              </div>
+              
+              {/* Add Finish Drawing button aligned with undo/redo */}
+              {window.tempVerticesRef && window.tempVerticesRef.length >= 1 && (
+                <button
+                  onClick={handleFinishDrawing}
+                  className="bg-green-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-green-700 transition-all mt-2"
+                  title="Finish Drawing"
+                >
+                  <FontAwesomeIcon icon={faCheck} className="mr-2" />
+                  <span className="font-medium">Finish Drawing</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -2060,6 +2710,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
         />
+
+        {/* Add a quick edit button for the selected polygon */}
+        {selectedPolygonIndex !== null && !showPolygonTools && (
+          <button
+            onClick={() => setShowPolygonTools(true)}
+            className="absolute top-20 right-4 bg-white rounded-full shadow-lg p-3 flex items-center justify-center hover:bg-gray-100 transition-all"
+            title={`Edit ${polygonStyles.fieldName}`}
+          >
+            <FontAwesomeIcon icon={faEdit} className="text-green-600 text-lg" />
+            <span className="ml-2 font-medium">Edit {polygonStyles.fieldName}</span>
+          </button>
+        )}
       </div>
     </LoadScript>
   );
