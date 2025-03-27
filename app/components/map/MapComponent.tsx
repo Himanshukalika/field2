@@ -7,7 +7,7 @@ import MapControls from './MapControls';
 import CreateMenu from './CreateMenu';
 import ZoomControls from './ZoomControls';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
 
@@ -355,8 +355,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             
             // Reset the marker if it still exists
             if (edgeMarker && edgeMarker.getMap()) {
-              edgeMarker.set('dragMarker', null);
-              edgeMarker.setOpacity(1);
+            edgeMarker.set('dragMarker', null);
+            edgeMarker.setOpacity(1);
             }
             
             // Clear the active reference if it's this marker
@@ -1936,26 +1936,34 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     return marker;
   }, [map, updateEdgeMarkers, saveToUndoStack, defaultMarkerScale]);
 
-  // Add a handler for polygon selection
+  // Add handler for polygon click
   const handlePolygonClick = useCallback((index: number) => {
-    // Only allow selection if not in drawing mode
-    if (!isDrawingMode) {
+    if (isDrawingMode) return;
+    
+    // Toggle selection if clicking the same polygon
+    if (selectedPolygonIndex === index) {
+      // Just deselect the polygon
+      setSelectedPolygonIndex(null);
+      // Close the tools menu when deselecting
+      setShowPolygonTools(false);
+    } else {
+      // Select the new polygon
       setSelectedPolygonIndex(index);
-      setShowPolygonTools(true);
       
-      // Get current styles of the selected polygon
+      // Get the styling properties from the clicked polygon
       const polygon = fieldPolygons[index];
-      if (polygon) {
-        setPolygonStyles({
-          strokeColor: polygon.get('strokeColor') || strokeColor,
-          fillColor: polygon.get('fillColor') || polygonColor,
-          strokeWeight: polygon.get('strokeWeight') || strokeWeight,
-          fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
-          fieldName: polygon.get('fieldName') || `Field ${index + 1}`,
-        });
-      }
+      setPolygonStyles({
+        strokeColor: polygon.get('strokeColor') || strokeColor,
+        fillColor: polygon.get('fillColor') || polygonColor,
+        strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+        fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
+        fieldName: polygon.get('fieldName') || `Field ${index + 1}`,
+      });
+      
+      // Don't automatically show tools when selecting a polygon
+      // The user will need to click the tools button to show the menu
     }
-  }, [isDrawingMode, fieldPolygons]);
+  }, [fieldPolygons, isDrawingMode, selectedPolygonIndex]);
 
   // Add handlers for polygon style changes
   const handleChangeStrokeColor = useCallback((color: string) => {
@@ -2529,6 +2537,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             ))}
           </GoogleMap>
 
+          {/* Add toggle button for polygon tools */}
+          {selectedPolygonIndex !== null && (
+            <div className="absolute bottom-20 right-4 z-10">
+              <button
+                onClick={() => setShowPolygonTools(prev => !prev)}
+                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
+                title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
+              >
+                <FontAwesomeIcon 
+                  icon={showPolygonTools ? faClose : faCog} 
+                  className="text-xl text-green-700" 
+                />
+              </button>
+            </div>
+          )}
+
           {/* Add the PolygonToolsMenu component */}
           <PolygonToolsMenu 
             isOpen={showPolygonTools}
@@ -2710,18 +2734,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
         />
-
-        {/* Add a quick edit button for the selected polygon */}
-        {selectedPolygonIndex !== null && !showPolygonTools && (
-          <button
-            onClick={() => setShowPolygonTools(true)}
-            className="absolute top-20 right-4 bg-white rounded-full shadow-lg p-3 flex items-center justify-center hover:bg-gray-100 transition-all"
-            title={`Edit ${polygonStyles.fieldName}`}
-          >
-            <FontAwesomeIcon icon={faEdit} className="text-green-600 text-lg" />
-            <span className="ml-2 font-medium">Edit {polygonStyles.fieldName}</span>
-          </button>
-        )}
       </div>
     </LoadScript>
   );

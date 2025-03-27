@@ -49,12 +49,12 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   }
 
   return (
-    <div className="absolute top-20 right-4 bg-white rounded-lg shadow-lg w-80 overflow-hidden animate-slideIn">
-      <div className="flex justify-between items-center border-b px-4 py-3">
-        <h3 className="font-semibold">{fieldName || `Field #${selectedPolygonIndex + 1}`}</h3>
+    <div className="absolute bottom-20 right-20 bg-white rounded-lg shadow-lg w-80 overflow-hidden animate-slideIn z-10 border-2 border-green-500">
+      <div className="flex justify-between items-center border-b border-green-200 px-4 py-3 bg-green-50">
+        <h3 className="font-semibold text-green-800">{fieldName || `Field #${selectedPolygonIndex + 1}`}</h3>
         <button 
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-700"
+          className="text-green-600 hover:text-green-800"
         >
           <FontAwesomeIcon icon={faTimes} />
         </button>
@@ -63,8 +63,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
       <div className="p-4">
         {/* Field Name */}
         <div className="mb-4">
-          <label className="flex items-center mb-1 text-sm font-medium">
-            <FontAwesomeIcon icon={faTag} className="mr-2 text-gray-600" />
+          <label className="flex items-center mb-1 text-sm font-medium text-green-800">
+            <FontAwesomeIcon icon={faTag} className="mr-2 text-green-600" />
             Field Name
           </label>
           <input 
@@ -78,8 +78,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
         
         {/* Stroke Color */}
         <div className="mb-3">
-          <label className="flex items-center mb-1 text-sm font-medium">
-            <FontAwesomeIcon icon={faBorderStyle} className="mr-2 text-gray-600" />
+          <label className="flex items-center mb-1 text-sm font-medium text-green-800">
+            <FontAwesomeIcon icon={faBorderStyle} className="mr-2 text-green-600" />
             Border Color
           </label>
           <div className="flex">
@@ -100,8 +100,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
         
         {/* Fill Color */}
         <div className="mb-3">
-          <label className="flex items-center mb-1 text-sm font-medium">
-            <FontAwesomeIcon icon={faFill} className="mr-2 text-gray-600" />
+          <label className="flex items-center mb-1 text-sm font-medium text-green-800">
+            <FontAwesomeIcon icon={faFill} className="mr-2 text-green-600" />
             Fill Color
           </label>
           <div className="flex">
@@ -122,8 +122,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
         
         {/* Stroke Weight */}
         <div className="mb-3">
-          <label className="flex items-center mb-1 text-sm font-medium">
-            <FontAwesomeIcon icon={faBorderStyle} className="mr-2 text-gray-600" />
+          <label className="flex items-center mb-1 text-sm font-medium text-green-800">
+            <FontAwesomeIcon icon={faBorderStyle} className="mr-2 text-green-600" />
             Border Width
           </label>
           <div className="flex items-center">
@@ -141,8 +141,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
         
         {/* Fill Opacity */}
         <div className="mb-3">
-          <label className="flex items-center mb-1 text-sm font-medium">
-            <FontAwesomeIcon icon={faFill} className="mr-2 text-gray-600" />
+          <label className="flex items-center mb-1 text-sm font-medium text-green-800">
+            <FontAwesomeIcon icon={faFill} className="mr-2 text-green-600" />
             Fill Opacity
           </label>
           <div className="flex items-center">
