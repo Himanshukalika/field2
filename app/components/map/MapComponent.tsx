@@ -419,6 +419,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               rotation: MARKER_ROTATION
             },
             draggable: true,
+            crossOnDrag: false,
             zIndex: 3
           });
           
@@ -895,58 +896,44 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           let dragMarker: google.maps.Marker | null = null;
 
         const showRedMarker = (marker: google.maps.Marker) => {
-          // Save state before adding vertex on edge
-          if (vertices.length > 0) {
-            saveToUndoStack([...vertices]);
-          }
+          // First clear all existing red markers
+          clearAllRedMarkers();
           
-            // If there's an existing active vertex marker, remove its drag marker
-            if (activeVertexMarkerRef.current && activeVertexMarkerRef.current !== marker) {
-              // Reset the previous active marker if it's not this one
-              activeVertexMarkerRef.current.setOpacity(1);
-              
-              // Find and remove the previous drag marker if it exists
-              const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-              if (prevDragMarker) {
-                prevDragMarker.setMap(null);
-                activeVertexMarkerRef.current.set('dragMarker', null);
-              }
-            }
-            
-            const position = marker.getPosition();
+          const position = marker.getPosition();
           if (!position) return;
-            
+          
           // Create the red location marker
-            dragMarker = new google.maps.Marker({
-              position: position,
-              map: map,
-              icon: {
-                path: LOCATION_MARKER_PATH,
-                fillColor: '#FF0000',
+          dragMarker = new google.maps.Marker({
+            position: position,
+            map: map,
+            icon: {
+              path: LOCATION_MARKER_PATH,
+              fillColor: '#FF0000',
               fillOpacity: 0.2,
-                strokeColor: '#FFFFFF',
-                strokeWeight: 1,
-                scale: 5.0,
-                anchor: new google.maps.Point(12, 22),
-                rotation: MARKER_ROTATION
-              },
+              strokeColor: '#FFFFFF',
+              strokeWeight: 1,
+              scale: 5.0,
+              anchor: new google.maps.Point(12, 22),
+              rotation: MARKER_ROTATION
+            },
             draggable: true,
-              zIndex: 3
-            });
-            
-            // Store the drag marker reference in the vertex marker
-            marker.set('dragMarker', dragMarker);
-            
-            // Set this as the active vertex marker
-            activeVertexMarkerRef.current = marker;
-            
+            crossOnDrag: false,
+            zIndex: 3
+          });
+          
+          // Store the drag marker reference in the vertex marker
+          marker.set('dragMarker', dragMarker);
+          
+          // Set this as the active vertex marker
+          activeVertexMarkerRef.current = marker;
+          
           // Hide the original circle marker
-            marker.setOpacity(0);
-            
-            // Store the original position and vertices
+          marker.setOpacity(0);
+          
+          // Store the original position and vertices
           marker.set('originalPosition', position);
-            marker.set('originalVertices', [...vertices]);
-            
+          marker.set('originalVertices', [...vertices]);
+          
           // For edge markers, we need to store which vertices this edge connects
           const edgeIndex = marker.get('edgeIndex');
           if (typeof edgeIndex === 'number') {
@@ -1069,6 +1056,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                         rotation: MARKER_ROTATION
                       },
                       draggable: true,
+                      crossOnDrag: false,
                       zIndex: 3
                     });
                     
@@ -1322,23 +1310,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         let dragMarker: google.maps.Marker | null = null;
 
         const showRedMarker = (marker: google.maps.Marker) => {
-          // Save state before moving vertex with red marker
-          if (vertices.length > 0) {
-            saveToUndoStack([...vertices]);
-          }
-          
-          // If there's an existing active vertex marker, remove its drag marker
-          if (activeVertexMarkerRef.current && activeVertexMarkerRef.current !== marker) {
-            // Reset the previous active marker if it's not this one
-            activeVertexMarkerRef.current.setOpacity(1);
-            
-            // Find and remove the previous drag marker if it exists
-            const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-            if (prevDragMarker) {
-              prevDragMarker.setMap(null);
-              activeVertexMarkerRef.current.set('dragMarker', null);
-            }
-          }
+          // First clear all existing red markers
+          clearAllRedMarkers();
           
           const position = marker.getPosition();
           if (!position) return;
@@ -1358,6 +1331,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               rotation: MARKER_ROTATION
             },
             draggable: true,
+            crossOnDrag: false,
             zIndex: 3
           });
           
@@ -1426,9 +1400,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
         // Also show red marker on dragstart
         marker.addListener('dragstart', () => {
-          // Save state before dragging vertex
-            saveToUndoStack([...vertices]);
-          
+          saveToUndoStack([...vertices]);
           showRedMarker(marker);
         });
         
@@ -1585,18 +1557,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     let dragMarker: google.maps.Marker | null = null;
 
     const showRedMarker = (marker: google.maps.Marker) => {
-      // If there's an existing active vertex marker, remove its drag marker
-      if (activeVertexMarkerRef.current && activeVertexMarkerRef.current !== marker) {
-        // Reset the previous active marker if it's not this one
-        activeVertexMarkerRef.current.setOpacity(1);
-        
-        // Find and remove the previous drag marker if it exists
-        const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-        if (prevDragMarker) {
-          prevDragMarker.setMap(null);
-          activeVertexMarkerRef.current.set('dragMarker', null);
-        }
-      }
+      // First clear all existing red markers
+      clearAllRedMarkers();
       
       const position = marker.getPosition();
       if (!position) return;
@@ -1616,6 +1578,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           rotation: MARKER_ROTATION
         },
         draggable: true,
+        crossOnDrag: false,
         zIndex: 3
       });
       
@@ -1712,6 +1675,37 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     window.tempMarkersRef.push(marker);
     return marker;
   }, [map, updateEdgeMarkers, saveToUndoStack]);
+
+  // Add a function to clear all red markers
+  const clearAllRedMarkers = useCallback(() => {
+    // Get all vertex markers
+    let allMarkers: google.maps.Marker[] = [];
+    
+    // Add markers from active drawing
+    if (window.tempMarkersRef) {
+      allMarkers = [...allMarkers, ...window.tempMarkersRef];
+    }
+    
+    // Add markers from completed polygons
+    fieldPolygons.forEach(polygon => {
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      allMarkers = [...allMarkers, ...vertexMarkers, ...edgeMarkers];
+    });
+    
+    // Find and remove any drag markers
+    allMarkers.forEach(marker => {
+      const dragMarker = marker.get('dragMarker');
+      if (dragMarker) {
+        dragMarker.setMap(null);
+        marker.set('dragMarker', null);
+        marker.setOpacity(1);
+      }
+    });
+    
+    // Reset active vertex reference
+    activeVertexMarkerRef.current = null;
+  }, [fieldPolygons]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
