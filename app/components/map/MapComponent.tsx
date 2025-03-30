@@ -7,7 +7,7 @@ import MapControls from './MapControls';
 import CreateMenu from './CreateMenu';
 import ZoomControls from './ZoomControls';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose } from '@fortawesome/free-solid-svg-icons';
+import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose, faTimes } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
 
@@ -705,42 +705,33 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         
         // Calculate appropriate font size based on the distance value
         let fontSize = '14px';
-        let padding = '6px 10px';
         
         // Dynamically adjust size based on distance
         if (unit === 'km') {
           if (numericValue > 5) {
             fontSize = '16px';
-            padding = '8px 12px';
           } else if (numericValue < 0.5) {
             fontSize = '12px';
-            padding = '4px 8px';
           }
         } else { // meters
           if (numericValue > 1000) {
             fontSize = '16px';
-            padding = '8px 12px';
           } else if (numericValue < 100) {
             fontSize = '12px';
-            padding = '4px 8px';
           }
         }
         
         div.innerHTML = `
           <div style="
-            background: rgba(0, 0, 0, 0.7);
             color: white;
-            padding: ${padding};
-            border-radius: 8px;
             font-size: ${fontSize};
             font-weight: 600;
             text-align: center;
             min-width: 60px;
             transform: translate(-50%, -150%);
-            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
             white-space: nowrap;
             cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            text-shadow: 0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black;
           ">
             <input
               type="number"
@@ -756,7 +747,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                 text-align: right;
                 outline: none;
                 padding: 0;
+                margin-right: -4px;
                 font-weight: 600;
+                text-shadow: 0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black;
               "
             />${unit}
           </div>
@@ -2160,6 +2153,42 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     }
   }, [map, onPolygonComplete, polygonColor, polygonFillOpacity, strokeColor, strokeWeight]);
 
+  // Add a function to handle cancelling the drawing
+  const handleCancelDrawing = useCallback(() => {
+    // Clean up temporary drawing objects
+    if (window.tempPolylineRef) {
+      window.tempPolylineRef.setMap(null);
+      window.tempPolylineRef = null;
+    }
+    
+    // Clean up temporary markers
+    if (window.tempMarkersRef) {
+      window.tempMarkersRef.forEach((marker: google.maps.Marker) => marker.setMap(null));
+      window.tempMarkersRef = [];
+    }
+    
+    if (window.tempEdgeMarkersRef) {
+      window.tempEdgeMarkersRef.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+        if (marker) {
+          marker.setMap(null);
+        }
+      });
+      window.tempEdgeMarkersRef = [];
+    }
+    
+    // Reset vertices
+    window.tempVerticesRef = [];
+    
+    // Exit drawing mode
+    setIsDrawingMode(false);
+    
+    // Reset undo/redo stacks
+    setUndoStack([]);
+    setRedoStack([]);
+    setCanUndo(false);
+    setCanRedo(false);
+  }, []);
+
   // Add handler for field name changes
   const handleChangeName = useCallback((name: string) => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
@@ -2257,33 +2286,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       addFieldLabel(polygon);
     });
   }, [fieldPolygons, addFieldLabel]);
-
-  // Use effect to update labels on map changes
-  useEffect(() => {
-    if (!map) return;
-    
-    // Update labels initially
-    updateFieldLabels();
-    
-    // Update labels on zoom or pan
-    const listeners = [
-      map.addListener('zoom_changed', updateFieldLabels),
-      map.addListener('dragend', updateFieldLabels)
-    ];
-    
-    return () => {
-      // Clean up listeners
-      listeners.forEach(listener => google.maps.event.removeListener(listener));
-      
-      // Close all info windows
-      fieldPolygons.forEach(polygon => {
-        const infoWindow = polygon.get('infoWindow') as google.maps.InfoWindow;
-        if (infoWindow) {
-          infoWindow.close();
-        }
-      });
-    };
-  }, [map, updateFieldLabels, fieldPolygons]);
 
   // Add effect to update field labels
   useEffect(() => {
@@ -2701,17 +2703,28 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               </button>
               </div>
               
-              {/* Add Finish Drawing button aligned with undo/redo */}
-              {window.tempVerticesRef && window.tempVerticesRef.length >= 1 && (
+              {/* Add Finish Drawing and Cancel Drawing buttons */}
+              <div className="flex flex-col gap-2 mt-2">
+                {window.tempVerticesRef && window.tempVerticesRef.length >= 3 && (
+                  <button
+                    onClick={handleFinishDrawing}
+                    className="bg-green-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-green-700 transition-all"
+                    title="Finish Drawing"
+                  >
+                    <FontAwesomeIcon icon={faCheck} className="mr-2" />
+                    <span className="font-medium">Finish Drawing</span>
+                  </button>
+                )}
+                
                 <button
-                  onClick={handleFinishDrawing}
-                  className="bg-green-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-green-700 transition-all mt-2"
-                  title="Finish Drawing"
+                  onClick={handleCancelDrawing}
+                  className="bg-red-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-red-700 transition-all"
+                  title="Cancel Drawing"
                 >
-                  <FontAwesomeIcon icon={faCheck} className="mr-2" />
-                  <span className="font-medium">Finish Drawing</span>
+                  <FontAwesomeIcon icon={faTimes} className="mr-2" />
+                  <span className="font-medium">Cancel Drawing</span>
                 </button>
-              )}
+              </div>
             </div>
           )}
         </div>
