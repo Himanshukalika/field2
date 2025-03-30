@@ -8,7 +8,10 @@ import {
   faTrash, 
   faBorderStyle,
   faTimes,
-  faTag
+  faTag,
+  faEye,
+  faMapMarked,
+  faRuler
 } from '@fortawesome/free-solid-svg-icons';
 
 interface PolygonToolsMenuProps {
@@ -20,11 +23,15 @@ interface PolygonToolsMenuProps {
   onChangeFillOpacity: (opacity: number) => void;
   onChangeName: (name: string) => void;
   onDelete: () => void;
+  onToggleDistanceLabels: () => void;
+  onToggleFieldLabels: () => void;
   strokeColor: string;
   fillColor: string;
   strokeWeight: number;
   fillOpacity: number;
   fieldName: string;
+  showDistanceLabels: boolean;
+  showFieldLabels: boolean;
   selectedPolygonIndex: number | null;
 }
 
@@ -37,11 +44,15 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   onChangeFillOpacity,
   onChangeName,
   onDelete,
+  onToggleDistanceLabels,
+  onToggleFieldLabels,
   strokeColor,
   fillColor,
   strokeWeight,
   fillOpacity,
   fieldName,
+  showDistanceLabels,
+  showFieldLabels,
   selectedPolygonIndex
 }) => {
   if (!isOpen || selectedPolygonIndex === null) {
@@ -156,6 +167,46 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
               className="flex-1 mr-2"
             />
             <span className="w-8 text-center">{Math.round(fillOpacity * 100)}%</span>
+          </div>
+        </div>
+        
+        {/* Map Appearance Section */}
+        <div className="mt-6 mb-3 border-t border-green-200 pt-4">
+          <h4 className="text-sm font-medium text-green-800 mb-3 flex items-center">
+            <FontAwesomeIcon icon={faMapMarked} className="mr-2 text-green-600" />
+            Map Appearance
+          </h4>
+          
+          {/* Toggle Distance Labels */}
+          <div className="flex items-center justify-between mb-3">
+            <label className="flex items-center text-sm text-gray-700">
+              <FontAwesomeIcon icon={faRuler} className="mr-2 text-green-600" />
+              Show Distance Labels
+            </label>
+            <button 
+              onClick={onToggleDistanceLabels}
+              className={`w-16 h-8 rounded-full relative ${showDistanceLabels ? 'bg-green-500' : 'bg-gray-300'} transition-colors`}
+            >
+              <span 
+                className={`absolute w-6 h-6 bg-white rounded-full shadow transform transition-transform ${showDistanceLabels ? 'translate-x-8' : 'translate-x-1'} top-1`}
+              ></span>
+            </button>
+          </div>
+          
+          {/* Toggle Field Labels */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center text-sm text-gray-700">
+              <FontAwesomeIcon icon={faTag} className="mr-2 text-green-600" />
+              Show Field Labels
+            </label>
+            <button 
+              onClick={onToggleFieldLabels}
+              className={`w-16 h-8 rounded-full relative ${showFieldLabels ? 'bg-green-500' : 'bg-gray-300'} transition-colors`}
+            >
+              <span 
+                className={`absolute w-6 h-6 bg-white rounded-full shadow transform transition-transform ${showFieldLabels ? 'translate-x-8' : 'translate-x-1'} top-1`}
+              ></span>
+            </button>
           </div>
         </div>
         
