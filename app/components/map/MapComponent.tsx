@@ -2508,10 +2508,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               // Calculate the original index from the reversed index
               const index = fieldPolygons.length - 1 - reversedIndex;
               return (
-                <Polygon
-                  key={index}
-                  paths={polygon.getPath().getArray()}
-                  options={{
+              <Polygon
+                key={index}
+                paths={polygon.getPath().getArray()}
+                options={{
                     fillColor: polygon.get('fillColor') || polygonColor,
                     fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
                     strokeColor: polygon.get('strokeColor') || strokeColor,
@@ -2520,26 +2520,26 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     editable: polygon.getEditable(),
                     draggable: polygon.getDraggable(),
                     zIndex: selectedPolygonIndex === index ? 1000 : (index + 10), // Give higher z-index to more recently created polygons
-                  }}
-                  onClick={(e) => {
+                }}
+                onClick={(e) => {
                     // If we're in drawing mode, let the click pass through
-                    if (isDrawingMode) {
+                  if (isDrawingMode) {
                       e.stop();
-                      
-                      // Manually forward the click to the map to add a vertex
-                      if (e.latLng && map) {
-                        google.maps.event.trigger(map, 'click', { 
-                          latLng: e.latLng,
-                          stop: () => {} // Dummy function to match event interface
-                        });
-                      }
+                    
+                    // Manually forward the click to the map to add a vertex
+                    if (e.latLng && map) {
+                      google.maps.event.trigger(map, 'click', { 
+                        latLng: e.latLng,
+                        stop: () => {} // Dummy function to match event interface
+                      });
+                    }
                     } else {
                       // Otherwise, select this polygon
                       e.stop(); // Prevent the event from bubbling to polygons below
                       handlePolygonClick(index);
-                    }
-                  }}
-                />
+                  }
+                }}
+              />
               );
             })}
           </GoogleMap>
