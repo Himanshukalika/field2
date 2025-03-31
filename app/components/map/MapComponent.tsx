@@ -147,143 +147,54 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         perimeter: perimeter / 1000, // Convert to kilometers
         vertices: window.tempVerticesRef.length
       });
-    } else if (selectedPolygonIndex !== null && fieldPolygons[selectedPolygonIndex]) {
-      // Calculate for selected polygon
-      const polygon = fieldPolygons[selectedPolygonIndex];
-      const path = polygon.getPath();
-      
-      // Calculate perimeter
-      let perimeter = 0;
-      for (let i = 0; i < path.getLength(); i++) {
-        const p1 = path.getAt(i);
-        const p2 = path.getAt((i + 1) % path.getLength());
-        perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-      }
-
-      // Calculate area
-      const area = google.maps.geometry.spherical.computeArea(path);
-
-      setBannerInfo({
-        area: area / 10000, // Convert to hectares
-        perimeter: perimeter / 1000, // Convert to kilometers
-        vertices: path.getLength()
-      });
     } else {
       setBannerInfo({ area: 0, perimeter: 0, vertices: 0 });
     }
-  }, [isDrawingMode, window.tempVerticesRef, selectedPolygonIndex, fieldPolygons]);
+  }, [isDrawingMode, window.tempVerticesRef]);
 
-  // Add effect to update banner info when polygon is dragged or modified
+  // Add effect to update banner info when vertices are dragged
   useEffect(() => {
-    if (selectedPolygonIndex !== null && fieldPolygons[selectedPolygonIndex]) {
-      const polygon = fieldPolygons[selectedPolygonIndex];
-      
-      // Add listeners for polygon modifications
-      const path = polygon.getPath();
-      const listeners = [
-        path.addListener('set_at', () => {
-          // Calculate perimeter
-          let perimeter = 0;
-          for (let i = 0; i < path.getLength(); i++) {
-            const p1 = path.getAt(i);
-            const p2 = path.getAt((i + 1) % path.getLength());
-            perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-          }
-
-          // Calculate area
-          const area = google.maps.geometry.spherical.computeArea(path);
-
-          setBannerInfo({
-            area: area / 10000, // Convert to hectares
-            perimeter: perimeter / 1000, // Convert to kilometers
-            vertices: path.getLength()
-          });
-        }),
-        path.addListener('insert_at', () => {
-          // Calculate perimeter
-          let perimeter = 0;
-          for (let i = 0; i < path.getLength(); i++) {
-            const p1 = path.getAt(i);
-            const p2 = path.getAt((i + 1) % path.getLength());
-            perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-          }
-
-          // Calculate area
-          const area = google.maps.geometry.spherical.computeArea(path);
-
-          setBannerInfo({
-            area: area / 10000, // Convert to hectares
-            perimeter: perimeter / 1000, // Convert to kilometers
-            vertices: path.getLength()
-          });
-        }),
-        path.addListener('remove_at', () => {
-          // Calculate perimeter
-          let perimeter = 0;
-          for (let i = 0; i < path.getLength(); i++) {
-            const p1 = path.getAt(i);
-            const p2 = path.getAt((i + 1) % path.getLength());
-            perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-          }
-
-          // Calculate area
-          const area = google.maps.geometry.spherical.computeArea(path);
-
-          setBannerInfo({
-            area: area / 10000, // Convert to hectares
-            perimeter: perimeter / 1000, // Convert to kilometers
-            vertices: path.getLength()
-          });
-        })
-      ];
-
-      // Add drag listeners
-      const dragListener = polygon.addListener('drag', () => {
+    if (isDrawingMode && window.tempVerticesRef) {
+      const updateBanner = () => {
         // Calculate perimeter
         let perimeter = 0;
-        for (let i = 0; i < path.getLength(); i++) {
-          const p1 = path.getAt(i);
-          const p2 = path.getAt((i + 1) % path.getLength());
+        for (let i = 0; i < window.tempVerticesRef.length; i++) {
+          const p1 = window.tempVerticesRef[i];
+          const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
           perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
         }
 
-        // Calculate area
-        const area = google.maps.geometry.spherical.computeArea(path);
+        // Calculate area if we have at least 3 vertices
+        let area = 0;
+        if (window.tempVerticesRef.length >= 3) {
+          area = google.maps.geometry.spherical.computeArea(window.tempVerticesRef);
+        }
 
         setBannerInfo({
           area: area / 10000, // Convert to hectares
           perimeter: perimeter / 1000, // Convert to kilometers
-          vertices: path.getLength()
+          vertices: window.tempVerticesRef.length
         });
-      });
+      };
 
-      const dragEndListener = polygon.addListener('dragend', () => {
-        // Calculate perimeter
-        let perimeter = 0;
-        for (let i = 0; i < path.getLength(); i++) {
-          const p1 = path.getAt(i);
-          const p2 = path.getAt((i + 1) % path.getLength());
-          perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
-        }
+      // Add listeners to update banner when vertices change
+      if (window.tempPolylineRef) {
+        const path = window.tempPolylineRef.getPath();
+        google.maps.event.addListener(path, 'set_at', updateBanner);
+        google.maps.event.addListener(path, 'insert_at', updateBanner);
+        google.maps.event.addListener(path, 'remove_at', updateBanner);
+      }
 
-        // Calculate area
-        const area = google.maps.geometry.spherical.computeArea(path);
-
-        setBannerInfo({
-          area: area / 10000, // Convert to hectares
-          perimeter: perimeter / 1000, // Convert to kilometers
-          vertices: path.getLength()
-        });
-      });
-
-      // Cleanup listeners
       return () => {
-        listeners.forEach(listener => google.maps.event.removeListener(listener));
-        google.maps.event.removeListener(dragListener);
-        google.maps.event.removeListener(dragEndListener);
+        if (window.tempPolylineRef) {
+          const path = window.tempPolylineRef.getPath();
+          google.maps.event.clearListeners(path, 'set_at');
+          google.maps.event.clearListeners(path, 'insert_at');
+          google.maps.event.clearListeners(path, 'remove_at');
+        }
       };
     }
-  }, [selectedPolygonIndex, fieldPolygons]);
+  }, [isDrawingMode]);
 
   // Add a function to clear all red markers - moved up to avoid reference before declaration
   const clearAllRedMarkers = useCallback(() => {
@@ -2664,8 +2575,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       <div className="flex flex-col h-screen w-full">
         <Navbar onPlaceSelect={handlePlaceSelect} />
         <div style={mapStyles.container}>
-          {/* Show banner in both drawing mode and when a polygon is selected */}
-          {(isDrawingMode || selectedPolygonIndex !== null) && (
+          {/* Add the banner */}
+          {isDrawingMode && (
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm shadow-lg z-20 p-2">
               <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
                 <div className="flex items-center gap-2">
