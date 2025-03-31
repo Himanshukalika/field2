@@ -2503,40 +2503,45 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             
             {/* We're not using DrawingManager anymore for our custom implementation */}
             
-            {/* Display existing field polygons */}
-            {fieldPolygons.map((polygon, index) => (
-              <Polygon
-                key={index}
-                paths={polygon.getPath().getArray()}
-                options={{
-                  fillColor: polygon.get('fillColor') || polygonColor,
-                  fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
-                  strokeColor: polygon.get('strokeColor') || strokeColor,
-                  strokeWeight: polygon.get('strokeWeight') || strokeWeight,
-                  clickable: true,
-                  editable: polygon.getEditable(),
-                  draggable: polygon.getDraggable(),
-                  zIndex: selectedPolygonIndex === index ? 2 : 1,
-                }}
-                onClick={(e) => {
-                  // If we're in drawing mode, let the click pass through
-                  if (isDrawingMode) {
-                    e.stop();
-                    
-                    // Manually forward the click to the map to add a vertex
-                    if (e.latLng && map) {
-                      google.maps.event.trigger(map, 'click', { 
-                        latLng: e.latLng,
-                        stop: () => {} // Dummy function to match event interface
-                      });
+            {/* Display existing field polygons - render in reverse order so later polygons are drawn on top */}
+            {[...fieldPolygons].reverse().map((polygon, reversedIndex) => {
+              // Calculate the original index from the reversed index
+              const index = fieldPolygons.length - 1 - reversedIndex;
+              return (
+                <Polygon
+                  key={index}
+                  paths={polygon.getPath().getArray()}
+                  options={{
+                    fillColor: polygon.get('fillColor') || polygonColor,
+                    fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
+                    strokeColor: polygon.get('strokeColor') || strokeColor,
+                    strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+                    clickable: true,
+                    editable: polygon.getEditable(),
+                    draggable: polygon.getDraggable(),
+                    zIndex: selectedPolygonIndex === index ? 1000 : (index + 10), // Give higher z-index to more recently created polygons
+                  }}
+                  onClick={(e) => {
+                    // If we're in drawing mode, let the click pass through
+                    if (isDrawingMode) {
+                      e.stop();
+                      
+                      // Manually forward the click to the map to add a vertex
+                      if (e.latLng && map) {
+                        google.maps.event.trigger(map, 'click', { 
+                          latLng: e.latLng,
+                          stop: () => {} // Dummy function to match event interface
+                        });
+                      }
+                    } else {
+                      // Otherwise, select this polygon
+                      e.stop(); // Prevent the event from bubbling to polygons below
+                      handlePolygonClick(index);
                     }
-                  } else {
-                    // Otherwise, select this polygon
-                    handlePolygonClick(index);
-                  }
-                }}
-              />
-            ))}
+                  }}
+                />
+              );
+            })}
           </GoogleMap>
 
           {/* Add toggle button for polygon tools */}
