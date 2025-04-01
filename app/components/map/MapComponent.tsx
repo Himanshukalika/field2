@@ -53,11 +53,11 @@ interface MapComponentProps {
 
 const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) => {
   const [isClient, setIsClient] = useState(false);
-  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [map, setMap] = useState<any | null>(null);
   const [mapType, setMapType] = useState<MapType>('hybrid');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const [userLocation, setUserLocation] = useState<google.maps.LatLng | null>(null);
+  const [userLocation, setUserLocation] = useState<any | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   
   // Add states for polygon tools
@@ -73,18 +73,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   
   // Add new state variables for drawing
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [fieldPolygons, setFieldPolygons] = useState<google.maps.Polygon[]>([]);
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const [fieldPolygons, setFieldPolygons] = useState<any[]>([]);
+  const drawingManagerRef = useRef<any | null>(null);
   
   // Add a ref to track the currently active drag marker
-  const activeVertexMarkerRef = useRef<google.maps.Marker | null>(null);
+  const activeVertexMarkerRef = useRef<any | null>(null);
 
   // Create a ref to store the DistanceOverlay class
   const DistanceOverlayRef = useRef<any>(null);
   
   // Add states for undo/redo functionality
-  const [undoStack, setUndoStack] = useState<google.maps.LatLng[][]>([]);
-  const [redoStack, setRedoStack] = useState<google.maps.LatLng[][]>([]);
+  const [undoStack, setUndoStack] = useState<any[][]>([]);
+  const [redoStack, setRedoStack] = useState<any[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // Add default marker scale state
@@ -811,14 +811,21 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   }, []);
 
   // Map event handlers
-  const onLoad = useCallback((map: google.maps.Map) => {
+  const onLoad = useCallback((map: any) => {
     setMap(map);
     
-    // Enable two-finger rotation gestures (mobile)
-    map.setOptions({
-      rotateControl: true, // Enable rotation control UI
-      tilt: 0 // Start with no tilt
-    });
+    // Enable two-finger rotation gestures and set map controls
+    // All google object access is safely inside this callback
+    if (map) {
+      map.setOptions({
+        rotateControl: true, // Enable rotation control UI
+        tilt: 0, // Start with no tilt
+        mapTypeControlOptions: {
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+        }
+      });
+    }
 
     // Create the DistanceOverlay class after Google Maps is loaded
     class DistanceOverlay extends google.maps.OverlayView {
@@ -1142,21 +1149,21 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     }
   }, [map]);
 
-  // Map options
+  // Map options without direct references to google
   const mapOptions = useMemo(() => ({
     mapTypeId: mapType,
-    mapTypeControl: false,
+    mapTypeControl: true,
     streetViewControl: false,
     fullscreenControl: false,
-    zoomControl: false,
+    zoomControl: true,
     scaleControl: true,
-    rotateControl: false, // Disable rotation controls
+    rotateControl: true, // Enable rotation controls
     panControl: false,
     scrollwheel: true,
     clickableIcons: false,
-    disableDefaultUI: true,
+    disableDefaultUI: false,
     tilt: 0,
-    gestureHandling: 'greedy',
+    gestureHandling: 'greedy', // Allow one finger to pan on mobile
     draggableCursor: 'grab',
     draggingCursor: 'move',
   }), [mapType]);
@@ -2379,7 +2386,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     // Calculate center of polygon
     const path = polygon.getPath();
     const bounds = new google.maps.LatLngBounds();
-    path.forEach(point => bounds.extend(point));
+    path.forEach((point: any) => bounds.extend(point));
     const center = bounds.getCenter();
     
     // Calculate area
@@ -2468,7 +2475,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       // Calculate polygon center
       const path = polygon.getPath();
       const bounds = new google.maps.LatLngBounds();
-      path.forEach(point => bounds.extend(point));
+      path.forEach((point: any) => bounds.extend(point));
       const center = bounds.getCenter();
       
       // Calculate polygon area
@@ -2595,7 +2602,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           // Recalculate center
           const path = polygon.getPath();
           const bounds = new google.maps.LatLngBounds();
-          path.forEach(point => bounds.extend(point));
+          path.forEach((point: any) => bounds.extend(point));
           const center = bounds.getCenter();
           
           // Update overlay position
@@ -2653,19 +2660,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             zoom={15}
             onLoad={onLoad}
             onUnmount={onUnmount}
-            options={{
-              fullscreenControl: false,
-              zoomControl: true,
-              streetViewControl: false,
-              mapTypeControl: true,
-              rotateControl: true, // Enable rotation controls
-              gestureHandling: 'greedy', // Allow one finger to pan (mobile)
-              tilt: 0, // Initialize with no tilt
-              mapTypeControlOptions: {
-                position: google.maps.ControlPosition.TOP_RIGHT,
-                style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-              }
-            }}
+            options={mapOptions}
           >
             {/* User location marker */}
             {userLocation && (
@@ -2955,10 +2950,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 // Add TypeScript declarations for the window object to avoid errors
 declare global {
   interface Window {
-    tempPolylineRef: google.maps.Polyline | null;
-    tempVerticesRef: google.maps.LatLng[];
-    tempMarkersRef: google.maps.Marker[];
-    tempEdgeMarkersRef: (google.maps.Marker | google.maps.OverlayView)[];
+    tempPolylineRef: any;
+    tempVerticesRef: any[];
+    tempMarkersRef: any[];
+    tempEdgeMarkersRef: any[];
   }
 }
 
