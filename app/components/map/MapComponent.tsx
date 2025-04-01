@@ -1144,13 +1144,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     fullscreenControl: false,
     zoomControl: false,
     scaleControl: true,
-    rotateControl: false,
+    rotateControl: true, // Enable rotate control for rotation
     panControl: false,
     scrollwheel: true,
     clickableIcons: false,
     disableDefaultUI: true,
     tilt: 0,
-    gestureHandling: 'greedy',
+    gestureHandling: 'greedy', // Allow all gestures including rotation
     draggableCursor: 'grab',
     draggingCursor: 'move',
   }), [mapType]);
