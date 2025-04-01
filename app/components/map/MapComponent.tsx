@@ -1144,13 +1144,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     fullscreenControl: false,
     zoomControl: false,
     scaleControl: true,
-    rotateControl: true, // Enable rotate control for rotation
+    rotateControl: false,
     panControl: false,
     scrollwheel: true,
     clickableIcons: false,
     disableDefaultUI: true,
     tilt: 0,
-    gestureHandling: 'greedy', // Allow all gestures including rotation
+    gestureHandling: 'greedy',
     draggableCursor: 'grab',
     draggingCursor: 'move',
   }), [mapType]);
@@ -2602,21 +2602,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       google.maps.event.removeListener(listener);
     };
   }, [fieldPolygons, map]);
-
-  useEffect(() => {
-    if (!map) return;
-    
-    // Enable gesture-based map rotation for mobile devices
-    map.setOptions({
-      gestureHandling: 'cooperative',
-      rotateControl: true,
-    });
-    
-    // Return cleanup function
-    return () => {
-      // No specific cleanup needed for this effect
-    };
-  }, [map]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
