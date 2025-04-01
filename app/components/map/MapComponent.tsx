@@ -2617,7 +2617,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         <div style={mapStyles.container}>
           {/* Add the banner */}
           {isDrawingMode && (
-            <div className="absolute top-0 left-0 right-0 bg-white/30 backdrop-blur-sm shadow-lg z-20 p-2">
+            <div className="absolute top-0 left-0 right-0 bg-white/60 backdrop-blur-sm shadow-lg z-20 p-2">
               <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-700">Area:</span>
