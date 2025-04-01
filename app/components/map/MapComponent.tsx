@@ -97,7 +97,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     vertices: 0
   });
 
-  // Add function to calculate and update banner info
+  // Add a more direct function to update the banner
   const updateBannerInfo = useCallback(() => {
     if (!window.tempVerticesRef || window.tempVerticesRef.length < 2) {
       setBannerInfo({ area: 0, perimeter: 0, vertices: 0 });
@@ -195,6 +195,41 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       };
     }
   }, [isDrawingMode]);
+
+  // Add effect to update banner info when polyline is updated (including during drag)
+  useEffect(() => {
+    if (!isDrawingMode || !map) return;
+
+    // Define a listener to update on map events
+    const updateMapListener = map.addListener('idle', updateBannerInfo);
+    
+    // Also update on drag events - these fire when markers are being dragged
+    const dragStartListener = map.addListener('dragstart', updateBannerInfo);
+    const dragListener = map.addListener('drag', updateBannerInfo);
+    const dragEndListener = map.addListener('dragend', updateBannerInfo);
+    
+    // Add custom polyline listener
+    let polylineUpdateInterval: NodeJS.Timeout | null = null;
+    
+    if (isDrawingMode) {
+      // Check and update banner frequently during drawing mode (more frequent updates)
+      polylineUpdateInterval = setInterval(() => {
+        if (window.tempVerticesRef && window.tempVerticesRef.length > 0) {
+          updateBannerInfo();
+        }
+      }, 50); // Update every 50ms for smoother updates
+    }
+    
+    return () => {
+      google.maps.event.removeListener(updateMapListener);
+      google.maps.event.removeListener(dragStartListener);
+      google.maps.event.removeListener(dragListener);
+      google.maps.event.removeListener(dragEndListener);
+      if (polylineUpdateInterval) {
+        clearInterval(polylineUpdateInterval);
+      }
+    };
+  }, [isDrawingMode, map, updateBannerInfo]);
 
   // Add a function to clear all red markers - moved up to avoid reference before declaration
   const clearAllRedMarkers = useCallback(() => {
@@ -1221,6 +1256,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
             // Update all edge markers
             updateEdgeMarkers();
+            updateBannerInfo();
               
               // Save state after changing distance
               saveToUndoStack([...vertices]);
@@ -1341,6 +1377,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
               }
               window.tempPolylineRef.setPath(path);
               updateEdgeMarkers();
+              updateBannerInfo();
             });
 
             dragMarker.addListener('dragend', () => {
@@ -1449,6 +1486,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                         
                         // Update the edge markers
                     updateEdgeMarkers();
+                    updateBannerInfo();
                       }
                   });
                   
@@ -1709,20 +1747,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           // Add drag listeners to the red marker
           dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
             if (!e.latLng) return;
-            // Use the vertex index directly from the marker
-            vertices[index] = e.latLng;
+            window.tempVerticesRef[index] = e.latLng;
             
             // Update the original marker position too (even while invisible)
             marker.setPosition(e.latLng);
             
-            if (tempPolyline) {
-              const path = vertices.slice();
-              if (vertices.length >= 3) {
-                path.push(vertices[0]);
+            if (window.tempPolylineRef) {
+              const path = window.tempVerticesRef.slice();
+              if (window.tempVerticesRef.length >= 3) {
+                path.push(window.tempVerticesRef[0]);
               }
-              tempPolyline.setPath(path);
+              window.tempPolylineRef.setPath(path);
             }
             updateEdgeMarkers();
+            
+            // Update banner info while dragging
+            updateBannerInfo();
           });
           
           // Add dragend listener to update the white marker position
