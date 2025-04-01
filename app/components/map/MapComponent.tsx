@@ -813,6 +813,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   // Map event handlers
   const onLoad = useCallback((map: google.maps.Map) => {
     setMap(map);
+    
+    // Enable two-finger rotation gestures (mobile)
+    map.setOptions({
+      rotateControl: true, // Enable rotation control UI
+      tilt: 0 // Start with no tilt
+    });
 
     // Create the DistanceOverlay class after Google Maps is loaded
     class DistanceOverlay extends google.maps.OverlayView {
@@ -1144,7 +1150,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     fullscreenControl: false,
     zoomControl: false,
     scaleControl: true,
-    rotateControl: false,
+    rotateControl: false, // Disable rotation controls
     panControl: false,
     scrollwheel: true,
     clickableIcons: false,
@@ -2647,7 +2653,19 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             zoom={15}
             onLoad={onLoad}
             onUnmount={onUnmount}
-            options={mapOptions}
+            options={{
+              fullscreenControl: false,
+              zoomControl: true,
+              streetViewControl: false,
+              mapTypeControl: true,
+              rotateControl: true, // Enable rotation controls
+              gestureHandling: 'greedy', // Allow one finger to pan (mobile)
+              tilt: 0, // Initialize with no tilt
+              mapTypeControlOptions: {
+                position: google.maps.ControlPosition.TOP_RIGHT,
+                style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+              }
+            }}
           >
             {/* User location marker */}
             {userLocation && (
