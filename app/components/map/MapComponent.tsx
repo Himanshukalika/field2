@@ -2794,15 +2794,15 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         <div style={mapStyles.container}>
           {/* Add the area information banner for selected field */}
           {selectedFieldInfo && !isDrawingMode && (
-            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
-              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-1 sm:p-2">
+              <div className="container mx-auto flex justify-center items-center gap-3 sm:gap-6 text-xs sm:text-sm">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <span className="font-semibold text-gray-100">{selectedFieldInfo.name}:</span>
                   <span className="text-green-400 font-medium">
                     {selectedFieldInfo.area.toFixed(2)} ha
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <span className="font-semibold text-gray-100">Perimeter:</span>
                   <span className="text-blue-400 font-medium">
                     {selectedFieldInfo.perimeter.toFixed(2)} km
@@ -2814,21 +2814,21 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           
           {/* Add the drawing mode banner */}
           {isDrawingMode && (
-            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
-              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-1 sm:p-2">
+              <div className="container mx-auto flex justify-center items-center gap-3 sm:gap-6 text-xs sm:text-sm">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <span className="font-semibold text-gray-100">Area:</span>
                   <span className="text-green-400 font-medium">
                     {bannerInfo.area.toFixed(2)} ha
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <span className="font-semibold text-gray-100">Perimeter:</span>
                   <span className="text-blue-400 font-medium">
                     {bannerInfo.perimeter.toFixed(2)} km
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <span className="font-semibold text-gray-100">Vertices:</span>
                   <span className="text-purple-400 font-medium">
                     {bannerInfo.vertices}
@@ -2920,15 +2920,15 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
           {/* Add toggle button for polygon tools */}
           {selectedPolygonIndex !== null && (
-            <div className="absolute bottom-20 right-4 z-10">
+            <div className="absolute bottom-16 sm:bottom-20 right-3 sm:right-4 z-10">
               <button
                 onClick={() => setShowPolygonTools(prev => !prev)}
-                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
+                className="bg-white rounded-full shadow-lg p-2 sm:p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
                 title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
               >
                 <FontAwesomeIcon 
                   icon={showPolygonTools ? faClose : faCog} 
-                  className="text-xl text-green-700" 
+                  className="text-lg sm:text-xl text-green-700" 
                 />
               </button>
             </div>
@@ -2954,25 +2954,25 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+            <div className="absolute bottom-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-1 sm:p-2">
               <div className="container mx-auto flex justify-between items-center">
                 {/* Left side: Cancel button */}
                 <div className="flex-1">
                   <button
                     onClick={handleCancelDrawing}
-                    className="flex items-center gap-1 px-3 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors text-xs sm:text-sm"
                   >
                     <FontAwesomeIcon icon={faTimes} />
-                    <span>Cancel</span>
+                    <span className="hidden xs:inline">Cancel</span>
                   </button>
                 </div>
                 
                 {/* Center: Undo/Redo buttons */}
-                <div className="flex gap-2 justify-center">
+                <div className="flex gap-1 sm:gap-2 justify-center">
                   <button
                     onClick={handleUndo}
                     disabled={undoStack.length === 0}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                    className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
                       undoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -2980,22 +2980,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     title="Undo"
                   >
                     <FontAwesomeIcon icon={faUndo} />
-                    <span>Undo</span>
+                    <span className="hidden xs:inline">Undo</span>
                   </button>
                   
                   <button
                     onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                    disabled={redoStack.length === 0}
+                    className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
                       redoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
-                title="Redo"
-              >
+                    }`}
+                    title="Redo"
+                  >
                     <FontAwesomeIcon icon={faRedo} />
-                    <span>Redo</span>
-              </button>
+                    <span className="hidden xs:inline">Redo</span>
+                  </button>
                 </div>
                 
                 {/* Right side: Finish button */}
@@ -3003,14 +3003,14 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                   <button
                     onClick={handleFinishDrawing}
                     disabled={window.tempVerticesRef.length < 3}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                    className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
                       window.tempVerticesRef.length >= 3
                         ? "bg-green-500 text-white hover:bg-green-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                   >
                     <FontAwesomeIcon icon={faCheck} />
-                    <span>Finish</span>
+                    <span className="hidden xs:inline">Finish</span>
                   </button>
                 </div>
               </div>
