@@ -2954,7 +2954,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-1 sm:p-2">
+            <div className="fixed bottom-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-1 sm:p-2">
               <div className="container mx-auto flex justify-between items-center">
                 {/* Left side: Cancel button */}
                 <div className="flex-1">
@@ -2963,7 +2963,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors text-xs sm:text-sm"
                   >
                     <FontAwesomeIcon icon={faTimes} />
-                    <span className="hidden xs:inline">Cancel</span>
+                    <span className="hidden sm:inline">Cancel</span>
                   </button>
                 </div>
                 
@@ -2980,7 +2980,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     title="Undo"
                   >
                     <FontAwesomeIcon icon={faUndo} />
-                    <span className="hidden xs:inline">Undo</span>
+                    <span className="hidden sm:inline">Undo</span>
                   </button>
                   
                   <button
@@ -2994,7 +2994,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     title="Redo"
                   >
                     <FontAwesomeIcon icon={faRedo} />
-                    <span className="hidden xs:inline">Redo</span>
+                    <span className="hidden sm:inline">Redo</span>
                   </button>
                 </div>
                 
@@ -3010,7 +3010,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     }`}
                   >
                     <FontAwesomeIcon icon={faCheck} />
-                    <span className="hidden xs:inline">Finish</span>
+                    <span className="hidden sm:inline">Finish</span>
                   </button>
                 </div>
               </div>
