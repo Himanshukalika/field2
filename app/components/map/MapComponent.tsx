@@ -2954,25 +2954,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/50 shadow-lg z-30 p-2 w-full">
-              <div className="container mx-auto flex justify-between items-center max-w-full px-1 sm:px-2">
+            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+              <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
                 {/* Left side: Cancel button */}
-                <div className="flex-1">
+                <div>
                   <button
                     onClick={handleCancelDrawing}
-                    className="flex items-center gap-1 px-2 sm:px-3 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors text-xs sm:text-sm"
+                    className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
                   >
                     <FontAwesomeIcon icon={faTimes} />
-                    <span className="hidden xs:inline">Cancel</span>
                   </button>
                 </div>
                 
                 {/* Center: Undo/Redo buttons */}
-                <div className="flex gap-1 sm:gap-2 justify-center">
+                <div className="flex gap-2 justify-center">
                   <button
                     onClick={handleUndo}
                     disabled={undoStack.length === 0}
-                    className={`flex items-center gap-1 px-2 sm:px-3 py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
                       undoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -2980,13 +2979,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     title="Undo"
                   >
                     <FontAwesomeIcon icon={faUndo} />
-                    <span className="hidden xs:inline">Undo</span>
                   </button>
                   
                   <button
                     onClick={handleRedo}
                     disabled={redoStack.length === 0}
-                    className={`flex items-center gap-1 px-2 sm:px-3 py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
                       redoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -2994,23 +2992,21 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     title="Redo"
                   >
                     <FontAwesomeIcon icon={faRedo} />
-                    <span className="hidden xs:inline">Redo</span>
                   </button>
                 </div>
                 
                 {/* Right side: Finish button */}
-                <div className="flex-1 flex justify-end">
+                <div>
                   <button
                     onClick={handleFinishDrawing}
                     disabled={window.tempVerticesRef.length < 3}
-                    className={`flex items-center gap-1 px-2 sm:px-3 py-2 rounded-md shadow transition-colors text-xs sm:text-sm ${
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
                       window.tempVerticesRef.length >= 3
                         ? "bg-green-500 text-white hover:bg-green-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                   >
                     <FontAwesomeIcon icon={faCheck} />
-                    <span className="hidden xs:inline">Finish</span>
                   </button>
                 </div>
               </div>
