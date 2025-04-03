@@ -33,6 +33,11 @@ const mapStyles = {
     height: 'calc(100vh - 48px)',
     position: 'relative' as const
   },
+  mapWithBanner: {
+    width: '100%',
+    height: 'calc(100vh - 96px)', // Account for both navbar and yellow banner (48px each)
+    position: 'relative' as const
+  },
   map: {
     width: '100%',
     height: '100%'
@@ -40,8 +45,8 @@ const mapStyles = {
 };
 
 const defaultCenter = {
-  lat: 27.342860470286933, 
-  lng: 75.79046143662488,
+  lat: 27.197777, 
+  lng: 75.713098,
 };
 
 const MARKER_ROTATION = 180; // Rotation in degrees
@@ -96,6 +101,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     perimeter: 0,
     vertices: 0
   });
+
+  // Add state to track selected field area
+  const [selectedFieldInfo, setSelectedFieldInfo] = useState<{area: number, perimeter: number, name: string} | null>(null);
 
   // Add a more direct function to update the banner
   const updateBannerInfo = useCallback(() => {
@@ -314,6 +322,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     
     // Disable drawing mode after polygon is complete
     setIsDrawingMode(false);
+    
+    // Make sure the create menu doesn't automatically open
+    setShowCreateMenu(false);
     
     // Make sure to reset any active vertex marker
     if (activeVertexMarkerRef.current) {
@@ -795,8 +806,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       marker.setMap(null);
     });
     
-    // Show the create menu again so user can create another field if desired
-    setShowCreateMenu(true);
+    // Remove this line to prevent auto-opening the create menu
+    // setShowCreateMenu(true);
     
     return polygon;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2090,12 +2101,36 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       setSelectedPolygonIndex(null);
       // Close the tools menu when deselecting
       setShowPolygonTools(false);
+      // Clear selected field info
+      setSelectedFieldInfo(null);
     } else {
       // Select the new polygon
       setSelectedPolygonIndex(index);
       
       // Get the styling properties from the clicked polygon
       const polygon = fieldPolygons[index];
+      
+      // Calculate area
+      const path = polygon.getPath();
+      const area = google.maps.geometry.spherical.computeArea(path);
+      const areaInHectares = area / 10000; // Convert to hectares
+      
+      // Calculate perimeter
+      let perimeter = 0;
+      for (let i = 0; i < path.getLength(); i++) {
+        const p1 = path.getAt(i);
+        const p2 = path.getAt((i + 1) % path.getLength());
+        perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+      }
+      const perimeterInKm = perimeter / 1000; // Convert to kilometers
+      
+      // Update field info
+      setSelectedFieldInfo({
+        area: areaInHectares,
+        perimeter: perimeterInKm,
+        name: polygon.get('fieldName') || `Field ${index + 1}`
+      });
+      
       setPolygonStyles({
         strokeColor: polygon.get('strokeColor') || strokeColor,
         fillColor: polygon.get('fillColor') || polygonColor,
@@ -2256,6 +2291,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       // Close the tools panel
       setShowPolygonTools(false);
       setSelectedPolygonIndex(null);
+      
+      // Clear selected field info
+      setSelectedFieldInfo(null);
     }
   }, [fieldPolygons, selectedPolygonIndex]);
 
@@ -2306,6 +2344,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
   // Add a function to handle cancelling the drawing
   const handleCancelDrawing = useCallback(() => {
+    // Clear any active red markers first
+    clearAllRedMarkers();
+    
     // Clean up temporary drawing objects
     if (window.tempPolylineRef) {
       window.tempPolylineRef.setMap(null);
@@ -2314,13 +2355,29 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     
     // Clean up temporary markers
     if (window.tempMarkersRef) {
-      window.tempMarkersRef.forEach((marker: google.maps.Marker) => marker.setMap(null));
+      window.tempMarkersRef.forEach(marker => {
+        // Clear any drag markers associated with these markers
+        const dragMarker = marker.get('dragMarker');
+        if (dragMarker) {
+          dragMarker.setMap(null);
+          marker.set('dragMarker', null);
+        }
+        marker.setMap(null);
+      });
       window.tempMarkersRef = [];
     }
     
     if (window.tempEdgeMarkersRef) {
-      window.tempEdgeMarkersRef.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-        if (marker) {
+      window.tempEdgeMarkersRef.forEach(marker => {
+        if (marker instanceof google.maps.Marker) {
+          // Clear any drag markers associated with these markers
+          const dragMarker = marker.get('dragMarker');
+          if (dragMarker) {
+            dragMarker.setMap(null);
+            marker.set('dragMarker', null);
+          }
+          marker.setMap(null);
+        } else {
           marker.setMap(null);
         }
       });
@@ -2338,7 +2395,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     setRedoStack([]);
     setCanUndo(false);
     setCanRedo(false);
-  }, []);
+    
+    // Clear selected field info
+    setSelectedFieldInfo(null);
+  }, [clearAllRedMarkers]);
 
   // Add handler for field name changes
   const handleChangeName = useCallback((name: string) => {
@@ -2603,6 +2663,116 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     };
   }, [fieldPolygons, map]);
 
+  // Add the handleUndo function  
+  const handleUndo = useCallback(() => {
+                  // Skip all state checks and directly execute handler with synchronous action
+                  if (window.tempVerticesRef && undoStack.length > 0) {
+                    // Immediately apply undo without waiting for state updates
+                    const prevVertices = undoStack[undoStack.length - 1];
+                    
+                    // Store current state in redo array
+                    const currentVertices = [...window.tempVerticesRef];
+                    const newRedoStack = [...redoStack, currentVertices];
+                    
+                    // Update global vertices directly
+                    window.tempVerticesRef = [...prevVertices];
+                    
+                    // Update polyline directly without waiting for state to update
+                    if (window.tempPolylineRef) {
+                      const path = prevVertices.slice();
+                      if (prevVertices.length >= 3) {
+                        path.push(prevVertices[0]);
+                      }
+                      window.tempPolylineRef.setPath(path);
+                    }
+                    
+                    // Clear current markers
+                    if (window.tempMarkersRef) {
+                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
+                      window.tempMarkersRef = [];
+                    }
+                    
+                    // Clear current edge markers
+                    if (window.tempEdgeMarkersRef) {
+                      window.tempEdgeMarkersRef.forEach(marker => {
+                        if (marker) {
+                          marker.setMap(null);
+                        }
+                      });
+                      window.tempEdgeMarkersRef = [];
+                    }
+                    
+                    // Create new markers immediately
+                    if (map && prevVertices.length > 0) {
+                      prevVertices.forEach((vertex, index) => {
+                        createVertexMarker(vertex, index, map);
+                      });
+                    }
+                    
+                    // Update the stacks only after visual changes are complete
+                    setUndoStack(undoStack.slice(0, -1));
+                    setRedoStack(newRedoStack);
+                    
+                    // Recreate edge markers
+                    updateEdgeMarkers();
+                  }
+  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
+
+  // Add the handleRedo function
+  const handleRedo = useCallback(() => {
+                  // Skip all state checks and directly execute handler with synchronous action
+                  if (window.tempVerticesRef && redoStack.length > 0) {
+                    // Immediately apply redo without waiting for state updates
+                    const nextVertices = redoStack[redoStack.length - 1];
+                    
+                    // Store current state in undo array
+                    const currentVertices = [...window.tempVerticesRef];
+                    const newUndoStack = [...undoStack, currentVertices];
+                    
+                    // Update global vertices directly
+                    window.tempVerticesRef = [...nextVertices];
+                    
+                    // Update polyline directly without waiting for state to update
+                    if (window.tempPolylineRef) {
+                      const path = nextVertices.slice();
+                      if (nextVertices.length >= 3) {
+                        path.push(nextVertices[0]);
+                      }
+                      window.tempPolylineRef.setPath(path);
+                    }
+                    
+                    // Clear current markers
+                    if (window.tempMarkersRef) {
+                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
+                      window.tempMarkersRef = [];
+                    }
+                    
+                    // Clear current edge markers
+                    if (window.tempEdgeMarkersRef) {
+                      window.tempEdgeMarkersRef.forEach(marker => {
+                        if (marker) {
+                          marker.setMap(null);
+                        }
+                      });
+                      window.tempEdgeMarkersRef = [];
+                    }
+                    
+                    // Create new markers immediately
+                    if (map && nextVertices.length > 0) {
+                      nextVertices.forEach((vertex, index) => {
+                        createVertexMarker(vertex, index, map);
+                      });
+                    }
+                    
+                    // Update the stacks only after visual changes are complete
+                    setUndoStack(newUndoStack);
+                    setRedoStack(redoStack.slice(0, -1));
+                    
+                    // Recreate edge markers
+                    updateEdgeMarkers();
+                  }
+  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -2613,27 +2783,54 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       libraries={libraries}
     >
       <div className="flex flex-col h-screen w-full">
-        <Navbar onPlaceSelect={handlePlaceSelect} />
+        <Navbar 
+          onPlaceSelect={handlePlaceSelect} 
+          isDrawingMode={isDrawingMode}
+          onCancelDrawing={handleCancelDrawing}
+          onFinishDrawing={handleFinishDrawing}
+          canFinishDrawing={window.tempVerticesRef && window.tempVerticesRef.length >= 3}
+        />
+        
         <div style={mapStyles.container}>
-          {/* Add the banner */}
-          {isDrawingMode && (
-            <div className="absolute top-0 left-0 right-0 bg-white/60 backdrop-blur-sm shadow-lg z-20 p-2">
+          {/* Add the area information banner for selected field */}
+          {selectedFieldInfo && !isDrawingMode && (
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
               <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-700">Area:</span>
-                  <span className="text-green-600 font-medium">
+                  <span className="font-semibold text-gray-100">{selectedFieldInfo.name}:</span>
+                  <span className="text-green-400 font-medium">
+                    {selectedFieldInfo.area.toFixed(2)} ha
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Perimeter:</span>
+                  <span className="text-blue-400 font-medium">
+                    {selectedFieldInfo.perimeter.toFixed(2)} km
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Add the drawing mode banner */}
+          {isDrawingMode && (
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Area:</span>
+                  <span className="text-green-400 font-medium">
                     {bannerInfo.area.toFixed(2)} ha
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-700">Perimeter:</span>
-                  <span className="text-blue-600 font-medium">
+                  <span className="font-semibold text-gray-100">Perimeter:</span>
+                  <span className="text-blue-400 font-medium">
                     {bannerInfo.perimeter.toFixed(2)} km
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-700">Vertices:</span>
-                  <span className="text-purple-600 font-medium">
+                  <span className="font-semibold text-gray-100">Vertices:</span>
+                  <span className="text-purple-400 font-medium">
                     {bannerInfo.vertices}
                   </span>
                 </div>
@@ -2692,7 +2889,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                     fillColor: polygon.get('fillColor') || polygonColor,
                     fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
                     strokeColor: polygon.get('strokeColor') || strokeColor,
-                    strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+                    strokeWeight: selectedPolygonIndex === index ? 4 : (polygon.get('strokeWeight') || strokeWeight),
                     clickable: true,
                     editable: polygon.getEditable(),
                     draggable: polygon.getDraggable(),
@@ -2755,157 +2952,67 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             selectedPolygonIndex={selectedPolygonIndex}
           />
 
-          {/* Add undo/redo buttons */}
+          {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="absolute top-20 left-4 flex flex-col gap-2">
-              <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  // Skip all state checks and directly execute handler with synchronous action
-                  if (window.tempVerticesRef && undoStack.length > 0) {
-                    // Immediately apply undo without waiting for state updates
-                    const prevVertices = undoStack[undoStack.length - 1];
-                    
-                    // Store current state in redo array
-                    const currentVertices = [...window.tempVerticesRef];
-                    const newRedoStack = [...redoStack, currentVertices];
-                    
-                    // Update global vertices directly
-                    window.tempVerticesRef = [...prevVertices];
-                    
-                    // Update polyline directly without waiting for state to update
-                    if (window.tempPolylineRef) {
-                      const path = prevVertices.slice();
-                      if (prevVertices.length >= 3) {
-                        path.push(prevVertices[0]);
-                      }
-                      window.tempPolylineRef.setPath(path);
-                    }
-                    
-                    // Clear current markers
-                    if (window.tempMarkersRef) {
-                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
-                      window.tempMarkersRef = [];
-                    }
-                    
-                    // Clear current edge markers
-                    if (window.tempEdgeMarkersRef) {
-                      window.tempEdgeMarkersRef.forEach(marker => {
-                        if (marker) {
-                          marker.setMap(null);
-                        }
-                      });
-                      window.tempEdgeMarkersRef = [];
-                    }
-                    
-                    // Create new markers immediately
-                    if (map && prevVertices.length > 0) {
-                      prevVertices.forEach((vertex, index) => {
-                        createVertexMarker(vertex, index, map);
-                      });
-                    }
-                    
-                    // Update the stacks only after visual changes are complete
-                    setUndoStack(undoStack.slice(0, -1));
-                    setRedoStack(newRedoStack);
-                    
-                    // Recreate edge markers
-                    updateEdgeMarkers();
-                  }
-                }}
-                disabled={undoStack.length === 0}
-                className={`rounded-full shadow-lg p-3 transition-all ${
-                  undoStack.length > 0 ? 'bg-white text-gray-700 hover:bg-gray-100' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-                title="Undo"
-              >
-                <FontAwesomeIcon icon={faUndo} className="text-lg" />
-              </button>
-              <button
-                onClick={() => {
-                  // Skip all state checks and directly execute handler with synchronous action
-                  if (window.tempVerticesRef && redoStack.length > 0) {
-                    // Immediately apply redo without waiting for state updates
-                    const nextVertices = redoStack[redoStack.length - 1];
-                    
-                    // Store current state in undo array
-                    const currentVertices = [...window.tempVerticesRef];
-                    const newUndoStack = [...undoStack, currentVertices];
-                    
-                    // Update global vertices directly
-                    window.tempVerticesRef = [...nextVertices];
-                    
-                    // Update polyline directly without waiting for state to update
-                    if (window.tempPolylineRef) {
-                      const path = nextVertices.slice();
-                      if (nextVertices.length >= 3) {
-                        path.push(nextVertices[0]);
-                      }
-                      window.tempPolylineRef.setPath(path);
-                    }
-                    
-                    // Clear current markers
-                    if (window.tempMarkersRef) {
-                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
-                      window.tempMarkersRef = [];
-                    }
-                    
-                    // Clear current edge markers
-                    if (window.tempEdgeMarkersRef) {
-                      window.tempEdgeMarkersRef.forEach(marker => {
-                        if (marker) {
-                          marker.setMap(null);
-                        }
-                      });
-                      window.tempEdgeMarkersRef = [];
-                    }
-                    
-                    // Create new markers immediately
-                    if (map && nextVertices.length > 0) {
-                      nextVertices.forEach((vertex, index) => {
-                        createVertexMarker(vertex, index, map);
-                      });
-                    }
-                    
-                    // Update the stacks only after visual changes are complete
-                    setUndoStack(newUndoStack);
-                    setRedoStack(redoStack.slice(0, -1));
-                    
-                    // Recreate edge markers
-                    updateEdgeMarkers();
-                  }
-                }}
+            <div className="absolute bottom-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-between items-center">
+                {/* Left side: Cancel button */}
+                <div className="flex-1">
+                  <button
+                    onClick={handleCancelDrawing}
+                    className="flex items-center gap-1 px-3 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+                
+                {/* Center: Undo/Redo buttons */}
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                      undoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title="Undo"
+                  >
+                    <FontAwesomeIcon icon={faUndo} />
+                    <span>Undo</span>
+                  </button>
+                  
+                  <button
+                    onClick={handleRedo}
                 disabled={redoStack.length === 0}
-                className={`rounded-full shadow-lg p-3 transition-all ${
-                  redoStack.length > 0 ? 'bg-white text-gray-700 hover:bg-gray-100' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                      redoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
                 }`}
                 title="Redo"
               >
-                <FontAwesomeIcon icon={faRedo} className="text-lg" />
+                    <FontAwesomeIcon icon={faRedo} />
+                    <span>Redo</span>
               </button>
-            </div>
-              
-              {/* Add Finish Drawing and Cancel Drawing buttons */}
-              <div className="flex flex-col gap-2 mt-2">
-                {window.tempVerticesRef && window.tempVerticesRef.length >= 3 && (
+                </div>
+                
+                {/* Right side: Finish button */}
+                <div className="flex-1 flex justify-end">
                   <button
                     onClick={handleFinishDrawing}
-                    className="bg-green-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-green-700 transition-all"
-                    title="Finish Drawing"
+                    disabled={window.tempVerticesRef.length < 3}
+                    className={`flex items-center gap-1 px-3 py-2 rounded-md shadow transition-colors ${
+                      window.tempVerticesRef.length >= 3
+                        ? "bg-green-500 text-white hover:bg-green-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
                   >
-                    <FontAwesomeIcon icon={faCheck} className="mr-2" />
-                    <span className="font-medium">Finish Drawing</span>
+                    <FontAwesomeIcon icon={faCheck} />
+                    <span>Finish</span>
                   </button>
-                )}
-                
-                <button
-                  onClick={handleCancelDrawing}
-                  className="bg-red-600 text-white rounded-lg shadow-lg py-2 px-3 flex items-center justify-center hover:bg-red-700 transition-all"
-                  title="Cancel Drawing"
-                >
-                  <FontAwesomeIcon icon={faTimes} className="mr-2" />
-                  <span className="font-medium">Cancel Drawing</span>
-                </button>
+                </div>
               </div>
             </div>
           )}
@@ -2921,7 +3028,15 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
         <CreateMenu
           showMenu={showCreateMenu}
-          onToggleMenu={() => setShowCreateMenu(!showCreateMenu)}
+          onToggleMenu={() => {
+            // Deselect any selected field when toggling the create menu
+            if (selectedPolygonIndex !== null) {
+              setSelectedPolygonIndex(null);
+              setShowPolygonTools(false);
+              setSelectedFieldInfo(null);
+            }
+            setShowCreateMenu(!showCreateMenu);
+          }}
           onOptionSelect={handleCreateOption}
         />
 

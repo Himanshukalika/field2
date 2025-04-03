@@ -10,7 +10,7 @@ interface ZoomControlsProps {
 
 const ZoomControls = ({ onZoomIn, onZoomOut }: ZoomControlsProps) => {
   return (
-    <div className="absolute bottom-4 right-3 bg-black bg-opacity-60 rounded-lg">
+    <div className="absolute bottom-16 right-3 bg-black bg-opacity-60 rounded-lg">
       <button 
         onClick={onZoomIn}
         className="w-12 h-12 text-white border-b border-gray-700 flex items-center justify-center hover:bg-opacity-80 transition-colors"
