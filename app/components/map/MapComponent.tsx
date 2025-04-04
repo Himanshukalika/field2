@@ -56,6 +56,14 @@ interface MapComponentProps {
   className?: string;
 }
 
+// Add definition for FieldImage interface
+interface FieldImages {
+  [fieldIndex: number]: {
+    images: string[]; // Array of base64 image strings
+    mainImageIndex: number;
+  }
+}
+
 const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) => {
   const [isClient, setIsClient] = useState(false);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -104,6 +112,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
   // Add state to track selected field area
   const [selectedFieldInfo, setSelectedFieldInfo] = useState<{area: number, perimeter: number, name: string} | null>(null);
+
+  // Add state to track field images
+  const [fieldImages, setFieldImages] = useState<FieldImages>({});
 
   // Add a more direct function to update the banner
   const updateBannerInfo = useCallback(() => {
@@ -2142,7 +2153,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       // Don't automatically show tools when selecting a polygon
       // The user will need to click the tools button to show the menu
     }
-  }, [fieldPolygons, isDrawingMode, selectedPolygonIndex]);
+  }, [isDrawingMode, selectedPolygonIndex, fieldPolygons, strokeColor, polygonColor, strokeWeight, polygonFillOpacity]);
 
   // Add handlers for polygon style changes
   const handleChangeStrokeColor = useCallback((color: string) => {
@@ -2773,6 +2784,161 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                   }
   }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
 
+  // Add handler for adding field images
+  const handleAddFieldImage = useCallback((fieldIndex: number, image: File) => {
+    // Convert the image file to base64 for easy storage
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      
+      setFieldImages(prev => {
+        const fieldData = prev[fieldIndex] || { images: [], mainImageIndex: 0 };
+        const updatedImages = [...fieldData.images, base64String];
+        
+        // Limit to 5 images per field
+        if (updatedImages.length > 5) {
+          updatedImages.length = 5;
+        }
+        
+        const updatedFieldData = {
+          ...fieldData,
+          images: updatedImages
+        };
+        
+        // Store the images in the polygon's properties for persistence
+        if (fieldIndex < fieldPolygons.length) {
+          const polygon = fieldPolygons[fieldIndex];
+          polygon.set('fieldImages', updatedImages);
+          polygon.set('fieldMainImageIndex', updatedFieldData.mainImageIndex);
+        }
+        
+        return {
+          ...prev,
+          [fieldIndex]: updatedFieldData
+        };
+      });
+    };
+    reader.readAsDataURL(image);
+  }, [fieldPolygons]);
+
+  // Add handler for deleting field images
+  const handleDeleteFieldImage = useCallback((fieldIndex: number, imageIndex: number) => {
+    setFieldImages(prev => {
+      const fieldData = prev[fieldIndex];
+      if (!fieldData) return prev;
+      
+      const updatedImages = [...fieldData.images];
+      updatedImages.splice(imageIndex, 1);
+      
+      // Adjust mainImageIndex if needed
+      let mainImageIndex = fieldData.mainImageIndex;
+      if (mainImageIndex >= updatedImages.length) {
+        mainImageIndex = updatedImages.length > 0 ? 0 : 0;
+      }
+      
+      const updatedFieldData = {
+        images: updatedImages,
+        mainImageIndex
+      };
+      
+      // Update the polygon's properties
+      if (fieldIndex < fieldPolygons.length) {
+        const polygon = fieldPolygons[fieldIndex];
+        polygon.set('fieldImages', updatedImages);
+        polygon.set('fieldMainImageIndex', mainImageIndex);
+      }
+      
+      if (updatedImages.length === 0) {
+        const newState = { ...prev };
+        delete newState[fieldIndex];
+        return newState;
+      }
+      
+      return {
+        ...prev,
+        [fieldIndex]: updatedFieldData
+      };
+    });
+  }, [fieldPolygons]);
+
+  // Add a new handler for setting the main image
+  const handleSetMainImage = useCallback((fieldIndex: number, imageIndex: number) => {
+    setFieldImages(prev => {
+      const fieldData = prev[fieldIndex];
+      if (!fieldData || imageIndex >= fieldData.images.length) return prev;
+      
+      const updatedFieldData = {
+        ...fieldData,
+        mainImageIndex: imageIndex
+      };
+      
+      // Update the polygon's properties
+      if (fieldIndex < fieldPolygons.length) {
+        const polygon = fieldPolygons[fieldIndex];
+        polygon.set('fieldMainImageIndex', imageIndex);
+      }
+      
+      return {
+        ...prev,
+        [fieldIndex]: updatedFieldData
+      };
+    });
+  }, [fieldPolygons]);
+
+  // Update the loadFieldImages function to handle multiple images
+  const loadFieldImages = useCallback(() => {
+    const images: FieldImages = {};
+    
+    fieldPolygons.forEach((polygon, index) => {
+      const fieldImages = polygon.get('fieldImages');
+      if (fieldImages && Array.isArray(fieldImages) && fieldImages.length > 0) {
+        const mainImageIndex = polygon.get('fieldMainImageIndex') || 0;
+        images[index] = {
+          images: fieldImages,
+          mainImageIndex: mainImageIndex < fieldImages.length ? mainImageIndex : 0
+        };
+      }
+    });
+    
+    setFieldImages(images);
+  }, [fieldPolygons]);
+
+  // Call loadFieldImages when field polygons change
+  useEffect(() => {
+    loadFieldImages();
+  }, [loadFieldImages]);
+
+  // ... existing code ...
+
+  // Update the PolygonToolsMenu component props
+  <PolygonToolsMenu 
+    isOpen={showPolygonTools}
+    onClose={() => setShowPolygonTools(false)}
+    onChangeStrokeColor={handleChangeStrokeColor}
+    onChangeFillColor={handleChangeFillColor}
+    onChangeStrokeWeight={handleChangeStrokeWeight}
+    onChangeFillOpacity={handleChangeFillOpacity}
+    onChangeName={handleChangeName}
+    onDelete={handleDeletePolygon}
+    onAddImage={handleAddFieldImage}
+    onDeleteImage={handleDeleteFieldImage}
+    onSetMainImage={handleSetMainImage}
+    strokeColor={polygonStyles.strokeColor}
+    fillColor={polygonStyles.fillColor}
+    strokeWeight={polygonStyles.strokeWeight}
+    fillOpacity={polygonStyles.fillOpacity}
+    fieldName={polygonStyles.fieldName}
+    fieldImages={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+      ? fieldImages[selectedPolygonIndex].images 
+      : []}
+    mainImageIndex={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+      ? fieldImages[selectedPolygonIndex].mainImageIndex 
+      : 0}
+    selectedPolygonIndex={selectedPolygonIndex}
+  />
+
+  // ... existing code ...
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -2944,11 +3110,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             onChangeFillOpacity={handleChangeFillOpacity}
             onChangeName={handleChangeName}
             onDelete={handleDeletePolygon}
+            onAddImage={handleAddFieldImage}
+            onDeleteImage={handleDeleteFieldImage}
+            onSetMainImage={handleSetMainImage}
             strokeColor={polygonStyles.strokeColor}
             fillColor={polygonStyles.fillColor}
             strokeWeight={polygonStyles.strokeWeight}
             fillOpacity={polygonStyles.fillOpacity}
             fieldName={polygonStyles.fieldName}
+            fieldImages={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+              ? fieldImages[selectedPolygonIndex].images 
+              : []}
+            mainImageIndex={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+              ? fieldImages[selectedPolygonIndex].mainImageIndex 
+              : 0}
             selectedPolygonIndex={selectedPolygonIndex}
           />
 
@@ -2983,16 +3158,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
                   
                   <button
                     onClick={handleRedo}
-                    disabled={redoStack.length === 0}
+                disabled={redoStack.length === 0}
                     className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
                       redoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
-                    title="Redo"
-                  >
+                }`}
+                title="Redo"
+              >
                     <FontAwesomeIcon icon={faRedo} />
-                  </button>
+              </button>
                 </div>
                 
                 {/* Right side: Finish button */}
