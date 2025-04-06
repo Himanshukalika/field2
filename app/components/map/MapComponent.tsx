@@ -11,6 +11,9 @@ import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlu
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
 import { useAuth } from '../../context/AuthContext';
+import { saveField, getUserFields, deleteField, checkFirestorePermissions } from '../../lib/firebase';
+import { polygonToFieldData, fieldDataToPolygon, centerMapOnField } from '../../lib/mapUtils';
+import { v4 as uuidv4 } from 'uuid';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -120,6 +123,59 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
   // Add state to track field images
   const [fieldImages, setFieldImages] = useState<FieldImages>({});
+
+  // New state for save/load functionality
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSaveOptions, setShowSaveOptions] = useState(false);
+  const [showLoadMenu, setShowLoadMenu] = useState(false);
+  const [loadedFields, setLoadedFields] = useState<any[]>([]);
+
+  // ... existing code, add after undoStack initialization ...
+  
+  // Load user fields when component initializes and user is authenticated
+  useEffect(() => {
+    // Only load fields if user is authenticated and the map is ready
+    // and there are no fields already loaded
+    if (user && map && !isLoading && !isDrawingMode && fieldPolygons.length === 0) {
+      const loadUserFields = async () => {
+        try {
+          // Load fields without showing any loading animation
+          const fields = await getUserFields();
+          
+          if (fields && fields.length > 0) {
+            // Automatically load all fields without asking the user
+            // Convert and add each field to the map
+            fields.forEach(fieldData => {
+              const polygon = fieldDataToPolygon(fieldData, map);
+              setFieldPolygons(prev => [...prev, polygon]);
+            });
+            
+            // Set up a small delay to calculate the bounds
+            setTimeout(() => {
+              if (fields.length === 1) {
+                // Center on the single field
+                centerMapOnField(map, fields[0]);
+              } else if (fields.length > 1) {
+                // Create bounds to contain all fields
+                const bounds = new google.maps.LatLngBounds();
+                fields.forEach(field => {
+                  field.points.forEach(point => {
+                    bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+                  });
+                });
+                map.fitBounds(bounds);
+              }
+            }, 100);
+          }
+        } catch (error) {
+          console.error('Error auto-loading fields:', error);
+        }
+      };
+      
+      loadUserFields();
+    }
+  }, [user, map, isLoading, isDrawingMode, fieldPolygons.length]);
 
   // Add a more direct function to update the banner
   const updateBannerInfo = useCallback(() => {
@@ -2974,6 +3030,199 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
 
   // ... existing code ...
 
+  // Function to save all field polygons to Firestore
+  const handleSaveAllFields = useCallback(async () => {
+    if (!user) {
+      alert('Please log in to save your fields');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      // Save each polygon to Firestore
+      const savedIds = await Promise.all(
+        fieldPolygons.map(async (polygon, index) => {
+          // Convert polygon to FieldData format
+          const fieldData = polygonToFieldData(polygon, index);
+          
+          // Save to Firestore
+          await saveField(fieldData);
+          
+          // Set the fieldId on the polygon for future updates
+          polygon.set('fieldId', fieldData.id);
+          
+          return fieldData.id;
+        })
+      );
+      
+      // Show temporary success message in banner
+      const notificationElement = document.getElementById('save-notification');
+      const notificationTextElement = document.getElementById('save-notification-text');
+      if (notificationElement && notificationTextElement) {
+        notificationTextElement.textContent = `Successfully saved ${savedIds.length} fields`;
+        notificationElement.style.display = 'block';
+        notificationElement.className = 'fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center';
+        
+        // Hide the notification after 3 seconds
+        setTimeout(() => {
+          notificationElement.style.display = 'none';
+        }, 3000);
+      }
+      
+      setShowSaveOptions(false);
+    } catch (error) {
+      console.error('Error saving fields:', error);
+      
+      // Show error message in banner
+      const notificationElement = document.getElementById('save-notification');
+      const notificationTextElement = document.getElementById('save-notification-text');
+      if (notificationElement && notificationTextElement) {
+        notificationTextElement.textContent = 'Error saving fields. Please try again later.';
+        notificationElement.style.display = 'block';
+        notificationElement.className = 'fixed top-14 left-0 right-0 bg-red-500 text-white p-2 z-50 text-center';
+        
+        // Hide the notification after 3 seconds
+        setTimeout(() => {
+          notificationElement.style.display = 'none';
+        }, 3000);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [fieldPolygons, user]);
+  
+  // Function to save the currently selected field to Firestore
+  const handleSaveCurrentField = useCallback(async () => {
+    if (!user) {
+      alert('Please log in to save your fields');
+      return;
+    }
+    
+    if (selectedPolygonIndex === null) {
+      alert('Please select a field to save');
+      return;
+    }
+    
+    try {
+      setIsSaving(true);
+      
+      // Get the selected polygon
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      
+      // Convert polygon to FieldData format
+      const fieldData = polygonToFieldData(polygon, selectedPolygonIndex);
+      
+      // Save to Firestore
+      await saveField(fieldData);
+      
+      // Set the fieldId on the polygon for future updates
+      polygon.set('fieldId', fieldData.id);
+      
+      alert('Field saved successfully');
+      setShowSaveOptions(false);
+    } catch (error) {
+      console.error('Error saving field:', error);
+      alert('Error saving field. Please try again later.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [fieldPolygons, selectedPolygonIndex, user]);
+  
+  // Function to load fields from Firestore - REMOVED as fields should stay on map until deleted
+  // const handleLoadFields = useCallback(async () => {
+  //   // Loading functionality removed
+  // }, []);
+  
+  // Function to load a specific field from the loaded fields list - REMOVED as fields should stay on map
+  // const handleLoadField = useCallback((fieldData: any) => {
+  //   // Loading functionality removed
+  // }, []);
+  
+  // Function to delete a field from Firestore
+  const handleDeleteFieldFromFirestore = useCallback(async (fieldId: string) => {
+    if (!user) {
+      alert('Please log in to delete your fields');
+      return;
+    }
+    
+    if (!confirm('Are you sure you want to delete this field? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Delete from Firestore
+      await deleteField(fieldId);
+      
+      // Remove from loaded fields
+      setLoadedFields(prev => prev.filter(field => field.id !== fieldId));
+      
+      alert('Field deleted successfully');
+    } catch (error) {
+      console.error('Error deleting field:', error);
+      alert('Error deleting field. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  // Check Firebase permissions and load user data when user changes
+  useEffect(() => {
+    const checkPermissionsAndLoadData = async () => {
+      if (user) {
+        // Check permissions
+        const hasPermissions = await checkFirestorePermissions();
+        
+        // Show notification if permissions are not available
+        const notificationElement = document.getElementById('permission-notification');
+        if (notificationElement) {
+          notificationElement.style.display = hasPermissions ? 'none' : 'block';
+        }
+        
+        if (!hasPermissions) {
+          console.warn('Firebase permissions unavailable. Using local storage fallback.');
+        }
+        
+        // Load user's fields if we have none loaded yet
+        if (fieldPolygons.length === 0 && map && !isDrawingMode) {
+          try {
+            // Load fields without showing any loading animation
+            const fields = await getUserFields();
+            
+            if (fields && fields.length > 0) {
+              // Automatically load all fields without asking
+              fields.forEach(fieldData => {
+                const polygon = fieldDataToPolygon(fieldData, map);
+                setFieldPolygons(prev => [...prev, polygon]);
+              });
+              
+              // Fit map to show all fields
+              setTimeout(() => {
+                if (fields.length === 1) {
+                  centerMapOnField(map, fields[0]);
+                } else if (fields.length > 1) {
+                  const bounds = new google.maps.LatLngBounds();
+                  fields.forEach(field => {
+                    field.points.forEach(point => {
+                      bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+                    });
+                  });
+                  map.fitBounds(bounds);
+                }
+              }, 100);
+            }
+          } catch (error) {
+            console.error('Error loading fields after authentication:', error);
+          }
+        }
+      }
+    };
+    
+    checkPermissionsAndLoadData();
+  }, [user, map, fieldPolygons.length, isDrawingMode]);
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -3251,6 +3500,33 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
           onZoomOut={handleZoomOut}
         />
         
+        {/* Save/Load button group */}
+        {user && (
+          <div className="absolute bottom-32 right-4 z-10 flex flex-col gap-2">
+            <div className="relative">
+              <button
+                onClick={handleSaveAllFields}
+                disabled={isDrawingMode || fieldPolygons.length === 0}
+                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 ${
+                  isDrawingMode || fieldPolygons.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title="Save All Fields"
+              >
+                <FontAwesomeIcon 
+                  icon={faFileImport} 
+                  className="text-xl text-blue-700" 
+                />
+              </button>
+              
+              {/* Save options dropdown removed - now automatically saves all fields */}
+            </div>
+            
+            {/* Load Fields button removed as drawn fields should remain on the map */}
+          </div>
+        )}
+        
+        {/* Load fields menu - Removed as drawn fields should remain on the map */}
+        
         {/* Add hidden file input for importing files */}
         <input
           type="file"
@@ -3268,6 +3544,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             }
           }}
         />
+      </div>
+      
+      {/* Permission error message banner */}
+      {user && (
+        <div id="permission-notification" style={{ display: 'none' }} 
+          className="fixed top-14 left-0 right-0 bg-amber-500 text-white p-2 z-50 text-center">
+          <p className="text-sm">
+            Unable to connect to cloud storage. Your fields will be saved locally on this device only.
+          </p>
+        </div>
+      )}
+      
+      {/* Save notification banner */}
+      <div id="save-notification" style={{ display: 'none' }} 
+        className="fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center">
+        <p id="save-notification-text" className="text-sm">Notification message</p>
       </div>
     </LoadScript>
   );

@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write to the fields collection if they're authenticated
+    match /fields/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+} 
