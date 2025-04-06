@@ -1,12 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faFilter, 
   faSquareCheck,
-  faTimes 
+  faTimes,
+  faUser,
+  faSignOutAlt,
+  faChevronDown
 } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
+import { useAuth } from '../../context/AuthContext';
 
 interface NavbarProps {
   onPlaceSelect: (location: google.maps.LatLng) => void;
@@ -14,6 +19,7 @@ interface NavbarProps {
   onCancelDrawing?: () => void;
   onFinishDrawing?: () => void;
   canFinishDrawing?: boolean;
+  onLogin?: () => void;
 }
 
 const Navbar = ({ 
@@ -21,8 +27,34 @@ const Navbar = ({
   isDrawingMode = false, 
   onCancelDrawing, 
   onFinishDrawing,
-  canFinishDrawing = false
+  canFinishDrawing = false,
+  onLogin = () => {}
 }: NavbarProps) => {
+  const { user, login, logout } = useAuth();
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const handleAuthAction = async () => {
+    if (user) {
+      setShowDropdown(!showDropdown);
+    } else {
+      try {
+        await login();
+      } catch (error) {
+        console.error('Login error:', error);
+      }
+    }
+  };
+
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await logout();
+      setShowDropdown(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   return (
     <div className="bg-gradient-to-r from-[#DAA520] to-[#B8860B] text-white px-4 py-2 flex items-center h-12 shadow-md">
       {!isDrawingMode ? (
@@ -35,6 +67,56 @@ const Navbar = ({
             <button className="hover:bg-white/20 p-2 rounded transition-colors">
               <FontAwesomeIcon icon={faSquareCheck} className="h-5 w-5" />
             </button>
+            
+            <div className="relative">
+              <button 
+                onClick={handleAuthAction}
+                className={`${user ? 'bg-white/20' : 'bg-white/10 hover:bg-white/30'} py-1 px-3 rounded transition-colors flex items-center gap-2 ml-2`}
+              >
+                {user ? (
+                  <>
+                    {user.photoURL ? (
+                      <img 
+                        src={user.photoURL} 
+                        alt={user.displayName || 'User'} 
+                        className="h-6 w-6 rounded-full" 
+                      />
+                    ) : (
+                      <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium truncate max-w-[80px]">
+                      {user.displayName?.split(' ')[0] || 'User'}
+                    </span>
+                    <FontAwesomeIcon icon={faChevronDown} className="h-3 w-3 ml-1" />
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
+                    <span className="text-sm font-medium">Login</span>
+                  </>
+                )}
+              </button>
+              
+              {showDropdown && user && (
+                <div className="absolute right-0 mt-1 bg-white text-gray-800 rounded shadow-lg py-1 min-w-[160px] z-50">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <div className="text-sm font-semibold truncate">
+                      {user.displayName || user.email || 'User'}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {user.email}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <FontAwesomeIcon icon={faSignOutAlt} className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </>
       ) : (

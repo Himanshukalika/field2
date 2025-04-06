@@ -10,6 +10,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose, faTimes } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
+import { useAuth } from '../../context/AuthContext';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -65,6 +66,9 @@ interface FieldImages {
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) => {
+  // Add authentication hook
+  const { user, login } = useAuth();
+  
   const [isClient, setIsClient] = useState(false);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapType, setMapType] = useState<MapType>('hybrid');
@@ -88,6 +92,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [fieldPolygons, setFieldPolygons] = useState<google.maps.Polygon[]>([]);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Add a ref to track the currently active drag marker
   const activeVertexMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -1037,12 +1042,36 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   }, [map]);
 
   // Create menu handlers - moved after onPolygonComplete
-  const handleCreateOption = useCallback((option: 'import' | 'field' | 'distance' | 'marker') => {
+  const handleCreateOption = useCallback(async (option: 'import' | 'field' | 'distance' | 'marker') => {
     setShowCreateMenu(false);
+    
+    // Check authentication for field drawing
+    if (option === 'field' && !user) {
+      // Show login dialog
+      const confirmLogin = window.confirm("You need to be logged in to draw fields. Would you like to login now?");
+      if (confirmLogin) {
+        try {
+          await login();
+          // After successful login, we don't immediately start drawing
+          // The user can click the draw button again
+          return;
+        } catch (error) {
+          console.error("Login failed:", error);
+          return;
+        }
+      } else {
+        // User cancelled login
+        return;
+      }
+    }
+    
     // Handle different creation options here
     switch (option) {
       case 'import':
-        // Handle import
+        // Handle importing KML/GeoJSON
+        if (fileInputRef.current) {
+          fileInputRef.current.click();
+        }
         break;
       case 'field':
         // Disable editing and hide all markers for previous fields
@@ -1148,7 +1177,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         // Handle marker placement
         break;
     }
-  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, defaultMarkerScale]);
+  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, defaultMarkerScale, user, login]);
 
   // Handle place selection from search
   const handlePlaceSelect = useCallback((location: google.maps.LatLng) => {
@@ -3214,6 +3243,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
         <ZoomControls
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
+        />
+        
+        {/* Add hidden file input for importing files */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".kml,.geojson,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            // Handle file upload logic here
+            if (e.target.files && e.target.files.length > 0) {
+              // Process the file (implementation would depend on your requirements)
+              console.log("File selected:", e.target.files[0].name);
+              
+              // Reset the input value to allow selecting the same file again
+              e.target.value = '';
+            }
+          }}
         />
       </div>
     </LoadScript>
