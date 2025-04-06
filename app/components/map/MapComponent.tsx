@@ -1051,12 +1051,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
       const confirmLogin = window.confirm("You need to be logged in to draw fields. Would you like to login now?");
       if (confirmLogin) {
         try {
-          await login();
+          const loggedInUser = await login();
+          if (!loggedInUser) {
+            // User closed the login popup or login was cancelled
+            console.log('Login was cancelled');
+            return;
+          }
           // After successful login, we don't immediately start drawing
           // The user can click the draw button again
           return;
         } catch (error) {
           console.error("Login failed:", error);
+          alert("Login failed. Please try again later.");
           return;
         }
       } else {

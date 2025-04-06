@@ -39,8 +39,13 @@ const Navbar = ({
     } else {
       try {
         await login();
+        // No need to handle the returned user here
+        // If login succeeds, the auth state will update automatically
+        // If the user closes the popup, we just continue silently
       } catch (error) {
+        // This will only catch unexpected errors, not user cancellations
         console.error('Login error:', error);
+        alert('Login failed. Please try again later.');
       }
     }
   };

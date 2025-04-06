@@ -7,14 +7,14 @@ import { auth, signInWithGoogle, signOutUser } from '../lib/firebase';
 interface AuthContextProps {
   user: User | null;
   loading: boolean;
-  login: () => Promise<void>;
+  login: () => Promise<User | null>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextProps>({
   user: null,
   loading: true,
-  login: async () => {},
+  login: async () => null,
   logout: async () => {},
 });
 
@@ -35,12 +35,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => unsubscribe();
   }, []);
 
-  const login = async () => {
+  const login = async (): Promise<User | null> => {
     try {
       const user = await signInWithGoogle();
       setUser(user);
-    } catch (error) {
+      return user;
+    } catch (error: any) {
+      // Handle popup closed by user - this is not an error that needs to be displayed to the user
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.log('Login popup was closed by the user');
+        return null;
+      }
+      
+      // Log and rethrow other errors
       console.error('Login failed:', error);
+      throw error;
     }
   };
 
@@ -50,6 +59,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
     } catch (error) {
       console.error('Logout failed:', error);
+      throw error;
     }
   };
 
