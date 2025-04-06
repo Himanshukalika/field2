@@ -14,6 +14,19 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Check if Firebase config is properly defined
+const requiredEnvVars = [
+  'NEXT_PUBLIC_FIREBASE_API_KEY',
+  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+  'NEXT_PUBLIC_FIREBASE_PROJECT_ID'
+];
+
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.warn(`Firebase config missing required variables: ${missingVars.join(', ')}`);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -24,8 +37,14 @@ export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error signing in with Google", error);
+    // Add more detailed error logging
+    if (error.code === 'auth/configuration-not-found') {
+      console.error('Firebase configuration error: Make sure environment variables are set correctly on Vercel');
+    } else if (error.code === 'auth/unauthorized-domain') {
+      console.error('Unauthorized domain: Add your app domain to Firebase authorized domains');
+    }
     throw error;
   }
 };

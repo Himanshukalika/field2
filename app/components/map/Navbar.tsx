@@ -42,10 +42,18 @@ const Navbar = ({
         // No need to handle the returned user here
         // If login succeeds, the auth state will update automatically
         // If the user closes the popup, we just continue silently
-      } catch (error) {
+      } catch (error: any) {
         // This will only catch unexpected errors, not user cancellations
         console.error('Login error:', error);
-        alert('Login failed. Please try again later.');
+        
+        // Display more specific error messages for production deployment issues
+        if (error.code === 'auth/unauthorized-domain') {
+          alert('Login failed: This domain is not authorized. The website administrator needs to add this domain to Firebase authorized domains.');
+        } else if (error.code === 'auth/configuration-not-found') {
+          alert('Login failed: Firebase configuration issue. Environment variables may be missing in deployment.');
+        } else {
+          alert('Login failed. Please try again later.');
+        }
       }
     }
   };

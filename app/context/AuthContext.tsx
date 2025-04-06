@@ -29,6 +29,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
       setLoading(false);
+    }, (error) => {
+      console.error("Auth state change error:", error);
+      setLoading(false);
     });
 
     // Cleanup subscription
@@ -45,6 +48,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error.code === 'auth/popup-closed-by-user') {
         console.log('Login popup was closed by the user');
         return null;
+      }
+      
+      // Check for specific Firebase errors that occur in production
+      if (error.code === 'auth/unauthorized-domain') {
+        console.error('Your domain is not authorized in Firebase. Add your domain to Firebase Console > Authentication > Settings > Authorized domains');
+      } else if (error.code === 'auth/configuration-not-found') {
+        console.error('Firebase configuration error. Check if environment variables are properly set in Vercel');
       }
       
       // Log and rethrow other errors
