@@ -36,3 +36,43 @@
   animation: popIn 0.4s cubic-bezier(0.18, 1.25, 0.4, 1.1) forwards;
 }
 
+/* Fix Google Maps Autocomplete suggestions visibility on mobile */
+.pac-container {
+  z-index: 9999 !important;
+  margin-top: 5px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  max-width: 90vw !important;
+  width: auto !important;
+}
+
+.pac-item {
+  padding: 8px 10px !important;
+  cursor: pointer !important;
+}
+
+.pac-item-query {
+  font-size: 14px !important;
+  color: #000 !important;
+}
+
+.pac-matched {
+  font-weight: bold !important;
+}
+
+.pac-icon {
+  margin-right: 8px !important;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 640px) {
+  .pac-container {
+    font-size: 16px !important; /* Prevents zoom on mobile when focusing input */
+  }
+  
+  .pac-item {
+    padding: 10px !important; /* Larger touch target on mobile */
+  }
+}
+

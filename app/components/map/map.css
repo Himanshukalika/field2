@@ -1,0 +1,56 @@
+/* Map component specific styles */
+
+/* Fix for search input on mobile */
+.pac-container {
+  background-color: white;
+  position: absolute !important;
+  z-index: 1000;
+  border-radius: 8px;
+  border-top: none;
+  font-family: system-ui, -apple-system, sans-serif;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* Make sure the search input text is visible */
+input[type="text"]:focus {
+  color: #000 !important;
+  background: white !important;
+  caret-color: black !important;
+}
+
+/* Style the map controls for better mobile experience */
+.gm-style .gm-style-iw {
+  z-index: 100 !important;
+}
+
+.gm-style-mtc,
+.gm-fullscreen-control,
+.gm-svpc {
+  margin-top: 10px !important;
+}
+
+/* Improve search box appearance */
+.search-box-container input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Mobile-specific fixes */
+@media (max-width: 768px) {
+  /* Ensure the search suggestions appear above everything */
+  .pac-container {
+    z-index: 2000 !important;
+    max-width: 95vw;
+    left: 50% !important;
+    transform: translateX(-50%);
+    width: 95% !important;
+  }
+  
+  /* Make text larger in the search dropdown for better tapping */
+  .pac-item {
+    padding: 12px 8px;
+    font-size: 16px;
+  }
+} 

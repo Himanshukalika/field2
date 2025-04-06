@@ -69,22 +69,24 @@ const Navbar = ({
   };
 
   return (
-    <div className="bg-gradient-to-r from-[#DAA520] to-[#B8860B] text-white px-4 py-2 flex items-center h-12 shadow-md">
+    <div className="bg-gradient-to-r from-[#DAA520] to-[#B8860B] text-white px-2 sm:px-4 py-2 flex items-center h-12 shadow-md w-full overflow-visible">
       {!isDrawingMode ? (
         <>
-          <SearchBox onPlaceSelect={onPlaceSelect} />
-          <div className="flex items-center gap-4">
-            <button className="hover:bg-white/20 p-2 rounded transition-colors">
-              <FontAwesomeIcon icon={faFilter} className="h-5 w-5" />
+          <div className="flex-1 max-w-[70%] sm:max-w-[75%] md:max-w-[80%] mr-1 sm:mr-2">
+            <SearchBox onPlaceSelect={onPlaceSelect} />
+          </div>
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            <button className="hover:bg-white/20 p-1 sm:p-2 rounded transition-colors">
+              <FontAwesomeIcon icon={faFilter} className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
-            <button className="hover:bg-white/20 p-2 rounded transition-colors">
-              <FontAwesomeIcon icon={faSquareCheck} className="h-5 w-5" />
+            <button className="hover:bg-white/20 p-1 sm:p-2 rounded transition-colors">
+              <FontAwesomeIcon icon={faSquareCheck} className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             
             <div className="relative">
               <button 
                 onClick={handleAuthAction}
-                className={`${user ? 'bg-white/20' : 'bg-white/10 hover:bg-white/30'} py-1 px-3 rounded transition-colors flex items-center gap-2 ml-2`}
+                className={`${user ? 'bg-white/20' : 'bg-white/10 hover:bg-white/30'} py-1 px-2 sm:px-3 rounded transition-colors flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2`}
               >
                 {user ? (
                   <>
@@ -92,20 +94,20 @@ const Navbar = ({
                       <img 
                         src={user.photoURL} 
                         alt={user.displayName || 'User'} 
-                        className="h-6 w-6 rounded-full" 
+                        className="h-5 w-5 sm:h-6 sm:w-6 rounded-full" 
                       />
                     ) : (
-                      <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
+                      <FontAwesomeIcon icon={faUser} className="h-3 w-3 sm:h-4 sm:w-4" />
                     )}
-                    <span className="text-sm font-medium truncate max-w-[80px]">
+                    <span className="text-xs sm:text-sm font-medium truncate max-w-[50px] sm:max-w-[80px]">
                       {user.displayName?.split(' ')[0] || 'User'}
                     </span>
-                    <FontAwesomeIcon icon={faChevronDown} className="h-3 w-3 ml-1" />
+                    <FontAwesomeIcon icon={faChevronDown} className="h-2 w-2 sm:h-3 sm:w-3 ml-1" />
                   </>
                 ) : (
                   <>
-                    <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
-                    <span className="text-sm font-medium">Login</span>
+                    <FontAwesomeIcon icon={faUser} className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm font-medium">Login</span>
                   </>
                 )}
               </button>
