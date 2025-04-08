@@ -1,5 +1,5 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -16,6 +16,7 @@ import {
   FirestoreError,
   DocumentData
 } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { Field } from '../components/map/types';
 
 // Your web app's Firebase configuration
@@ -44,9 +45,10 @@ if (missingVars.length > 0) {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
 // Sign in with Google
@@ -349,4 +351,4 @@ const deleteFieldFromLocalStorage = (fieldId: string): boolean => {
   }
 };
 
-export { auth, db }; 
+export { app, auth, db, storage }; 

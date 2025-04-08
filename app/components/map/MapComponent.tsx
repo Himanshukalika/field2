@@ -10,10 +10,11 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose, faTimes } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '@/app/context/AuthContext';
 import { saveField, getUserFields, deleteField, checkFirestorePermissions } from '../../lib/firebase';
 import { polygonToFieldData, fieldDataToPolygon, centerMapOnField } from '../../lib/mapUtils';
 import { v4 as uuidv4 } from 'uuid';
+import { uploadFieldImage, deleteFieldImage, getFieldImageUrl } from '@/app/lib/storage';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -57,6 +58,7 @@ const MARKER_ROTATION = 180; // Rotation in degrees
 
 interface MapComponentProps {
   onAreaUpdate?: (newArea: number) => void;
+  onPolygonUpdate?: (updatedPolygons: any[]) => void;
   className?: string;
 }
 
@@ -68,7 +70,30 @@ interface FieldImages {
   }
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) => {
+// Update the PolygonToolsMenu props interface
+interface PolygonToolsMenuProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onChangeStrokeColor: (color: string) => void;
+  onChangeFillColor: (color: string) => void;
+  onChangeStrokeWeight: (weight: number) => void;
+  onChangeFillOpacity: (opacity: number) => void;
+  onChangeName: (name: string) => void;
+  onDelete: () => void;
+  onAddImage: (file: File) => void;
+  onDeleteImage: (imageIndex: number) => void;
+  onSetMainImage: (imageIndex: number) => void;
+  strokeColor: string;
+  fillColor: string;
+  strokeWeight: number;
+  fillOpacity: number;
+  fieldName: string;
+  fieldImages: string[];
+  mainImageIndex: number;
+  selectedPolygonIndex: number | null;
+}
+
+const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpdate, className }) => {
   // Add authentication hook
   const { user, login } = useAuth();
   
@@ -2876,41 +2901,56 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
   }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
 
   // Add handler for adding field images
-  const handleAddFieldImage = useCallback((fieldIndex: number, image: File) => {
-    // Convert the image file to base64 for easy storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
+  const handleAddFieldImage = useCallback(async (fieldIndex: number, file: File) => {
+    if (!user || fieldIndex === null) return;
+
+    try {
+      // Show loading state with local URL
+      const localUrl = URL.createObjectURL(file);
+      setFieldImages(prev => ({
+        ...prev,
+        [fieldIndex]: {
+          images: [localUrl],
+          mainImageIndex: 0
+        }
+      }));
+
+      // Upload to Firebase Storage
+      const downloadURL = await uploadFieldImage(file, user.uid, fieldIndex.toString());
       
+      // Update state with Firebase URL
+      setFieldImages(prev => ({
+        ...prev,
+        [fieldIndex]: {
+          images: [downloadURL],
+          mainImageIndex: 0
+        }
+      }));
+      
+      // Update the polygon's properties
+      const updatedPolygons = [...fieldPolygons];
+      const polygon = updatedPolygons[fieldIndex];
+      if (polygon) {
+        polygon.set('fieldImages', [downloadURL]);
+        polygon.set('fieldMainImageIndex', 0);
+        setFieldPolygons(updatedPolygons);
+        onPolygonUpdate?.(updatedPolygons);
+      }
+
+      // Clean up the local URL
+      URL.revokeObjectURL(localUrl);
+    } catch (error) {
+      console.error('Error adding field image:', error);
+      alert('Failed to add image. Please try again.');
+      
+      // Clean up on error
       setFieldImages(prev => {
-        const fieldData = prev[fieldIndex] || { images: [], mainImageIndex: 0 };
-        const updatedImages = [...fieldData.images, base64String];
-        
-        // Limit to 5 images per field
-        if (updatedImages.length > 5) {
-          updatedImages.length = 5;
-        }
-        
-        const updatedFieldData = {
-          ...fieldData,
-          images: updatedImages
-        };
-        
-        // Store the images in the polygon's properties for persistence
-        if (fieldIndex < fieldPolygons.length) {
-          const polygon = fieldPolygons[fieldIndex];
-          polygon.set('fieldImages', updatedImages);
-          polygon.set('fieldMainImageIndex', updatedFieldData.mainImageIndex);
-        }
-        
-        return {
-          ...prev,
-          [fieldIndex]: updatedFieldData
-        };
+        const newState = { ...prev };
+        delete newState[fieldIndex];
+        return newState;
       });
-    };
-    reader.readAsDataURL(image);
-  }, [fieldPolygons]);
+    }
+  }, [fieldPolygons, user, onPolygonUpdate]);
 
   // Add handler for deleting field images
   const handleDeleteFieldImage = useCallback((fieldIndex: number, imageIndex: number) => {
@@ -3011,9 +3051,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
     onChangeFillOpacity={handleChangeFillOpacity}
     onChangeName={handleChangeName}
     onDelete={handleDeletePolygon}
-    onAddImage={handleAddFieldImage}
-    onDeleteImage={handleDeleteFieldImage}
-    onSetMainImage={handleSetMainImage}
+    onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
+    onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
+    onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
     strokeColor={polygonStyles.strokeColor}
     fillColor={polygonStyles.fillColor}
     strokeWeight={polygonStyles.strokeWeight}
@@ -3394,9 +3434,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, className }) 
             onChangeFillOpacity={handleChangeFillOpacity}
             onChangeName={handleChangeName}
             onDelete={handleDeletePolygon}
-            onAddImage={handleAddFieldImage}
-            onDeleteImage={handleDeleteFieldImage}
-            onSetMainImage={handleSetMainImage}
+            onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
+            onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
+            onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
             strokeColor={polygonStyles.strokeColor}
             fillColor={polygonStyles.fillColor}
             strokeWeight={polygonStyles.strokeWeight}

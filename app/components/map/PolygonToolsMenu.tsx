@@ -25,16 +25,16 @@ interface PolygonToolsMenuProps {
   onChangeFillOpacity: (opacity: number) => void;
   onChangeName: (name: string) => void;
   onDelete: () => void;
-  onAddImage?: (fieldIndex: number, image: File) => void;
-  onDeleteImage?: (fieldIndex: number, imageIndex: number) => void;
-  onSetMainImage?: (fieldIndex: number, imageIndex: number) => void;
+  onAddImage: (file: File) => void;
+  onDeleteImage: (imageIndex: number) => void;
+  onSetMainImage: (imageIndex: number) => void;
   strokeColor: string;
   fillColor: string;
   strokeWeight: number;
   fillOpacity: number;
   fieldName: string;
-  fieldImages?: string[];
-  mainImageIndex?: number;
+  fieldImages: string[];
+  mainImageIndex: number;
   selectedPolygonIndex: number | null;
 }
 
@@ -69,21 +69,15 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   }
 
   const handleImageUpload = (image: File) => {
-    if (onAddImage && selectedPolygonIndex !== null) {
-      onAddImage(selectedPolygonIndex, image);
-    }
+    onAddImage(image);
   };
 
   const handleDeleteImage = (imageIndex: number) => {
-    if (onDeleteImage && selectedPolygonIndex !== null) {
-      onDeleteImage(selectedPolygonIndex, imageIndex);
-    }
+    onDeleteImage(imageIndex);
   };
 
   const handleSetMainImage = (imageIndex: number) => {
-    if (onSetMainImage && selectedPolygonIndex !== null) {
-      onSetMainImage(selectedPolygonIndex, imageIndex);
-    }
+    onSetMainImage(imageIndex);
   };
 
   const mainImage = fieldImages.length > mainImageIndex ? fieldImages[mainImageIndex] : undefined;
