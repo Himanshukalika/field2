@@ -40,6 +40,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (): Promise<User | null> => {
     try {
+      // Check if Firebase config exists before attempting login
+      if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY || !process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN) {
+        console.error('Firebase configuration missing. Check environment variables in Vercel.');
+        throw new Error('Firebase configuration missing. Please check deployment settings.');
+      }
+      
       const user = await signInWithGoogle();
       setUser(user);
       return user;
@@ -52,9 +58,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       // Check for specific Firebase errors that occur in production
       if (error.code === 'auth/unauthorized-domain') {
-        console.error('Your domain is not authorized in Firebase. Add your domain to Firebase Console > Authentication > Settings > Authorized domains');
+        console.error('Vercel deployment error: Your domain is not authorized in Firebase. Add your Vercel domain to Firebase Console > Authentication > Settings > Authorized domains');
+        throw new Error('Authentication failed: This domain is not authorized in Firebase. Please contact the administrator.');
       } else if (error.code === 'auth/configuration-not-found') {
-        console.error('Firebase configuration error. Check if environment variables are properly set in Vercel');
+        console.error('Vercel deployment error: Firebase configuration missing. Check if environment variables are properly set in Vercel. See VERCEL_DEPLOYMENT.md for instructions.');
+        throw new Error('Authentication failed: Firebase configuration issue. Please contact the administrator.');
+      } else if (error.code === 'auth/internal-error') {
+        console.error('Firebase internal error. This may be caused by missing environment variables in Vercel or a misconfiguration.');
+        throw new Error('Authentication service error. Please try again later.');
       }
       
       // Log and rethrow other errors

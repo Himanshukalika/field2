@@ -48,11 +48,15 @@ const Navbar = ({
         
         // Display more specific error messages for production deployment issues
         if (error.code === 'auth/unauthorized-domain') {
-          alert('Login failed: This domain is not authorized. The website administrator needs to add this domain to Firebase authorized domains.');
+          alert('Login failed: This domain is not authorized. Please refer to the VERCEL_DEPLOYMENT.md guide for instructions on adding this domain to Firebase.');
         } else if (error.code === 'auth/configuration-not-found') {
-          alert('Login failed: Firebase configuration issue. Environment variables may be missing in deployment.');
+          alert('Login failed: Firebase configuration issue. Environment variables may be missing in your Vercel deployment. Please refer to the VERCEL_DEPLOYMENT.md guide.');
+        } else if (error.code === 'auth/internal-error') {
+          alert('Login failed: Firebase authentication service error. Please check your Vercel environment variables and Firebase configuration.');
+        } else if (error.message && error.message.includes('Firebase configuration missing')) {
+          alert('Login failed: Firebase configuration is missing. Please check your Vercel environment variables following the VERCEL_DEPLOYMENT.md guide.');
         } else {
-          alert('Login failed. Please try again later.');
+          alert(`Login failed: ${error.message || 'Unknown error occurred'}. Please try again later.`);
         }
       }
     }
