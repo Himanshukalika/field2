@@ -25,9 +25,9 @@ interface PolygonToolsMenuProps {
   onChangeFillOpacity: (opacity: number) => void;
   onChangeName: (name: string) => void;
   onDelete: () => void;
-  onAddImage: (file: File) => void;
-  onDeleteImage: (imageIndex: number) => void;
-  onSetMainImage: (imageIndex: number) => void;
+  onAddImage?: (file: File) => void;
+  onDeleteImage?: (imageIndex: number) => void;
+  onSetMainImage?: (imageIndex: number) => void;
   strokeColor: string;
   fillColor: string;
   strokeWeight: number;
@@ -69,15 +69,22 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   }
 
   const handleImageUpload = (image: File) => {
-    onAddImage(image);
+    if (onAddImage) {
+      onAddImage(image);
+    }
+    setShowImageUploader(false);
   };
 
   const handleDeleteImage = (imageIndex: number) => {
-    onDeleteImage(imageIndex);
+    if (onDeleteImage) {
+      onDeleteImage(imageIndex);
+    }
   };
 
   const handleSetMainImage = (imageIndex: number) => {
-    onSetMainImage(imageIndex);
+    if (onSetMainImage) {
+      onSetMainImage(imageIndex);
+    }
   };
 
   const mainImage = fieldImages.length > mainImageIndex ? fieldImages[mainImageIndex] : undefined;
@@ -253,7 +260,7 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
           )}
 
           {/* Images Tab Content */}
-          {activeTab === 'images' && onAddImage && (
+          {activeTab === 'images' && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium text-green-800">
