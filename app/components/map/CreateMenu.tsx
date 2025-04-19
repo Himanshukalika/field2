@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faFileImport, faDrawPolygon, faRuler, faMapMarker } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faFileImport, faDrawPolygon, faRuler, faLocationDot } from '@fortawesome/free-solid-svg-icons';
 
 interface CreateMenuProps {
   showMenu: boolean;
@@ -58,7 +58,7 @@ const CreateMenu: React.FC<CreateMenuProps> = ({
             onClick={() => handleOptionSelect('marker')}
           >
             <div className="bg-red-100 rounded-full p-1.5 mr-2">
-              <FontAwesomeIcon icon={faMapMarker} className="text-red-600 text-xs" />
+              <FontAwesomeIcon icon={faLocationDot} className="text-red-600 text-xs" />
             </div>
             <span>Add Marker</span>
           </button>

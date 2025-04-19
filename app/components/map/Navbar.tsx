@@ -73,7 +73,7 @@ const Navbar = ({
       {!isDrawingMode ? (
         <>
           <div className="flex-1 max-w-[70%] sm:max-w-[75%] md:max-w-[80%] mr-1 sm:mr-2">
-            <SearchBox onPlaceSelect={onPlaceSelect} />
+      <SearchBox onPlaceSelect={onPlaceSelect} />
           </div>
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button className="hover:bg-white/20 p-1 sm:p-2 rounded transition-colors">
@@ -142,7 +142,7 @@ const Navbar = ({
             className="p-1 text-white hover:bg-white/20 rounded transition-colors"
           >
             <FontAwesomeIcon icon={faTimes} className="text-xl" />
-          </button>
+        </button>
           <div className="flex-1 text-right">
             <button
               onClick={onFinishDrawing}
@@ -154,8 +154,8 @@ const Navbar = ({
               }`}
             >
               <span className="font-medium">SAVE</span>
-            </button>
-          </div>
+        </button>
+      </div>
         </div>
       )}
     </div>

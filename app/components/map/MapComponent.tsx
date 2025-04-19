@@ -7,7 +7,20 @@ import MapControls from './MapControls';
 import CreateMenu from './CreateMenu';
 import ZoomControls from './ZoomControls';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faLocationDot, faFileImport, faDrawPolygon, faRuler, faMapMarker, faPlus, faUndo, faRedo, faEdit, faCheck, faCog, faClose, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { 
+  faDrawPolygon, 
+  faTrash, 
+  faTimes, 
+  faCog, 
+  faPlus, 
+  faEdit,
+  faLocationDot,
+  faRuler,
+  faFileImport,
+  faUndo,
+  faRedo,
+  faCheck
+} from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
 import { useAuth } from '@/app/context/AuthContext';
@@ -157,8 +170,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [loadedFields, setLoadedFields] = useState<any[]>([]);
 
-  // Add distance measurement state
-  const [isMeasuringDistance, setIsMeasuringDistance] = useState(false);
+  const [measureDistanceMode, setMeasureDistanceMode] = useState<boolean>(false);
+  const [measurePoints, setMeasurePoints] = useState<google.maps.LatLngLiteral[]>([]);
+  const [distance, setDistance] = useState<number>(0);
 
   // ... existing code, add after undoStack initialization ...
   
@@ -1142,155 +1156,45 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             console.log('Login was cancelled');
             return;
           }
-          // After successful login, we don't immediately start drawing
-          // The user can click the draw button again
-          return;
         } catch (error) {
-          console.error("Login failed:", error);
-          alert("Login failed. Please try again later.");
+          console.error('Error logging in:', error);
           return;
         }
-      } else {
-        // User cancelled login
+        } else {
         return;
       }
     }
     
-    // Handle different creation options here
-    switch (option) {
-      case 'import':
-        // Handle importing KML/GeoJSON
-        if (fileInputRef.current) {
-          fileInputRef.current.click();
-        }
-        break;
-      case 'field':
-        // Disable editing and hide all markers for previous fields
-        fieldPolygons.forEach(polygon => {
-          // Disable dragging and editing for the polygon
-          polygon.setDraggable(false);
-          polygon.setEditable(false);
-          
-          // Hide all vertex markers
-          const vertexMarkers = polygon.get('vertexMarkers') || [];
-          vertexMarkers.forEach((marker: google.maps.Marker) => {
-            marker.setMap(null);
-          });
-          
-          // Hide all edge markers
-          const edgeMarkers = polygon.get('edgeMarkers') || [];
-          edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-            marker.setMap(null);
-          });
-        });
-        
-        // Check if we're already in drawing mode with at least 3 vertices
-        // This means we have an unfinished field that needs to be completed
-        const isUnfinishedField = isDrawingMode && window.tempVerticesRef && 
-          Array.isArray(window.tempVerticesRef) && window.tempVerticesRef.length >= 3;
-        
-        if (isUnfinishedField) {
-          // Finish the current polygon by simulating a double click
-          // This will call onPolygonComplete and create the polygon
-          console.log("Completing unfinished field before starting a new one");
-          
-          // Create final polygon with existing vertices
-          const polygon = new google.maps.Polygon({
+    if (option === 'import') {
+      // Handle import
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    } else if (option === 'field') {
+      // Start drawing mode
+          setIsDrawingMode(true);
+    } else if (option === 'distance') {
+      // Activate distance measurement mode
+      if (isDrawingMode) {
+        // Exit drawing mode if active
+        setIsDrawingMode(false);
+      }
+      setMeasureDistanceMode(true);
+    } else if (option === 'marker') {
+      // Add a marker at the center of the current map view
+      if (map) {
+        const center = map.getCenter();
+        if (center) {
+          // Create a new marker at the center position
+          new google.maps.Marker({
+            position: center,
             map: map,
-            paths: window.tempVerticesRef,
-            strokeColor: strokeColor,
-            strokeWeight: strokeWeight,
-            fillColor: polygonColor,
-            fillOpacity: polygonFillOpacity,
-            editable: true,
             draggable: true
           });
-          
-          // Clean up any existing polyline and markers
-          if (window.tempPolylineRef) {
-            window.tempPolylineRef.setMap(null);
-            window.tempPolylineRef = null;
-          }
-          
-          // Remove temporary markers
-          if (window.tempMarkersRef) {
-            window.tempMarkersRef.forEach((marker: google.maps.Marker) => marker.setMap(null));
-            window.tempMarkersRef = [];
-          }
-          
-          if (window.tempEdgeMarkersRef) {
-            window.tempEdgeMarkersRef.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-              if (marker) {
-                marker.setMap(null);
-              }
-            });
-            window.tempEdgeMarkersRef = [];
-          }
-          
-          // Call polygon complete
-          onPolygonComplete(polygon);
-          
-          // Wait a bit before starting new field to ensure proper cleanup
-          setTimeout(() => {
-            // Make sure everything is cleaned up
-            if (activeVertexMarkerRef.current) {
-              const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-              if (prevDragMarker) {
-                prevDragMarker.setMap(null);
-              }
-              activeVertexMarkerRef.current = null;
-            }
-            
-            // Reset drawing mode to trigger a fresh start
-            setIsDrawingMode(false);
-            setTimeout(() => setIsDrawingMode(true), 100);
-          }, 200);
-        } else {
-          // Make sure previous drawing state is cleaned up completely
-          // before starting a new drawing mode
-          if (activeVertexMarkerRef.current) {
-            // Find and remove any previous drag marker
-            const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-            if (prevDragMarker) {
-              prevDragMarker.setMap(null);
-            }
-            activeVertexMarkerRef.current = null;
-          }
-          
-          // Enable our custom drawing mode instead of using DrawingManager
-          setIsDrawingMode(true);
         }
-        break;
-      case 'distance':
-        // Handle distance measurement
-        if (isMeasuringDistance) {
-          setIsMeasuringDistance(false);
-        } else {
-          // If drawing, cancel it first
-          if (isDrawingMode) {
-            // Clear the drawing state without using handleCancelDrawing
-            setIsDrawingMode(false);
-            if (window.tempPolylineRef) {
-              window.tempPolylineRef.setMap(null);
-            }
-            if (window.tempMarkersRef) {
-              window.tempMarkersRef.forEach((marker: google.maps.Marker) => marker.setMap(null));
-            }
-          }
-          
-          // If editing a field, close the polygon tools
-          if (showPolygonTools) {
-            setShowPolygonTools(false);
-          }
-          
-          setIsMeasuringDistance(true);
-        }
-        break;
-      case 'marker':
-        // Handle marker placement
-        break;
+      }
     }
-  }, [map, isDrawingMode, onPolygonComplete, fieldPolygons, defaultMarkerScale, user, login, isMeasuringDistance, showPolygonTools]);
+  }, [user, login, map, isDrawingMode]);
 
   // Handle place selection from search
   const handlePlaceSelect = useCallback((location: google.maps.LatLng) => {
@@ -3289,378 +3193,373 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     checkPermissionsAndLoadData();
   }, [user, map, fieldPolygons.length, isDrawingMode]);
 
-  // Add handler for toggling distance measurement
-  const handleToggleDistanceMeasurement = useCallback(() => {
-    // If already measuring, turn it off
-    if (isMeasuringDistance) {
-      setIsMeasuringDistance(false);
-      return;
-    }
-
-    // If drawing, cancel it first
+  // Function to handle the measure distance option
+  const handleMeasureDistance = () => {
+    // Exit drawing mode if active
     if (isDrawingMode) {
       handleCancelDrawing();
     }
+    setMeasureDistanceMode(true);
+    setShowPolygonTools(false);
+  };
 
-    // If editing a field, close the polygon tools
-    if (showPolygonTools) {
-      setShowPolygonTools(false);
-    }
+  // Function to exit measure distance mode
+  const handleExitMeasureDistance = () => {
+    setMeasureDistanceMode(false);
+  };
 
-    // Start measuring
-    setIsMeasuringDistance(true);
-  }, [isMeasuringDistance, isDrawingMode, showPolygonTools, handleCancelDrawing]);
+  // Function to handle distance measurement updates
+  const handleDistanceUpdate = (newDistance: number, newMeasurePoints: google.maps.LatLngLiteral[]) => {
+    setDistance(newDistance);
+    setMeasurePoints(newMeasurePoints);
+  };
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
 
   return (
-    <div className={`relative w-full h-full ${className || ''}`}>
-      <LoadScript
-        googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
-        libraries={libraries}
-      >
-        <div className="flex flex-col h-screen w-full">
-          <Navbar 
-            onPlaceSelect={handlePlaceSelect} 
-            isDrawingMode={isDrawingMode}
-            onCancelDrawing={handleCancelDrawing}
-            onFinishDrawing={handleFinishDrawing}
-            canFinishDrawing={window.tempVerticesRef && window.tempVerticesRef.length >= 3}
-          />
-          
-          <div style={mapStyles.container}>
-            {/* Add the area information banner for selected field */}
-            {selectedFieldInfo && !isDrawingMode && (
-              <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
-                <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100">{selectedFieldInfo.name}:</span>
-                    <span className="text-green-400 font-medium">
-                      {selectedFieldInfo.area.toFixed(2)} ha
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100">Perimeter:</span>
-                    <span className="text-blue-400 font-medium">
-                      {selectedFieldInfo.perimeter.toFixed(2)} km
-                    </span>
-                  </div>
+    <LoadScript
+      googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+      libraries={libraries}
+    >
+      <div className="flex flex-col h-screen w-full">
+        <Navbar 
+          onPlaceSelect={handlePlaceSelect} 
+          isDrawingMode={isDrawingMode}
+          onCancelDrawing={handleCancelDrawing}
+          onFinishDrawing={handleFinishDrawing}
+          canFinishDrawing={window.tempVerticesRef && window.tempVerticesRef.length >= 3}
+        />
+        
+        <div style={mapStyles.container}>
+          {/* Add the area information banner for selected field */}
+          {selectedFieldInfo && !isDrawingMode && (
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">{selectedFieldInfo.name}:</span>
+                  <span className="text-green-400 font-medium">
+                    {selectedFieldInfo.area.toFixed(2)} ha
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Perimeter:</span>
+                  <span className="text-blue-400 font-medium">
+                    {selectedFieldInfo.perimeter.toFixed(2)} km
+                  </span>
                 </div>
               </div>
-            )}
-            
-            {/* Add the drawing mode banner */}
-            {isDrawingMode && (
-              <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
-                <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100">Area:</span>
-                    <span className="text-green-400 font-medium">
-                      {bannerInfo.area.toFixed(2)} ha
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100">Perimeter:</span>
-                    <span className="text-blue-400 font-medium">
-                      {bannerInfo.perimeter.toFixed(2)} km
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100">Vertices:</span>
-                    <span className="text-purple-400 font-medium">
-                      {bannerInfo.vertices}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <GoogleMap
-              mapContainerStyle={mapStyles.map}
-              center={defaultCenter}
-              zoom={15}
-              onLoad={onLoad}
-              onUnmount={onUnmount}
-              options={mapOptions}
-            >
-              {/* User location marker */}
-              {userLocation && (
-                <>
-                  <Marker
-                    position={userLocation}
-                    icon={{
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 12,
-                      fillColor: '#4285F4',
-                      fillOpacity: 1,
-                      strokeColor: '#FFFFFF',
-                      strokeWeight: 2,
-                    }}
-                    zIndex={1000}
-                  />
-                  <Circle
-                    center={userLocation}
-                    radius={20}
-                    options={{
-                      fillColor: '#4285F4',
-                      fillOpacity: 0.2,
-                      strokeColor: '#4285F4',
-                      strokeOpacity: 0.5,
-                      strokeWeight: 1,
-                    }}
-                  />
-                </>
-              )}
-              
-              {/* We're not using DrawingManager anymore for our custom implementation */}
-              
-              {/* Display existing field polygons - render in reverse order so later polygons are drawn on top */}
-              {[...fieldPolygons].reverse().map((polygon, reversedIndex) => {
-                // Calculate the original index from the reversed index
-                const index = fieldPolygons.length - 1 - reversedIndex;
-                return (
-                <Polygon
-                  key={index}
-                  paths={polygon.getPath().getArray()}
-                  options={{
-                      fillColor: polygon.get('fillColor') || polygonColor,
-                      fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
-                      strokeColor: polygon.get('strokeColor') || strokeColor,
-                      strokeWeight: selectedPolygonIndex === index ? 4 : (polygon.get('strokeWeight') || strokeWeight),
-                      clickable: true,
-                      editable: polygon.getEditable(),
-                      draggable: polygon.getDraggable(),
-                      zIndex: selectedPolygonIndex === index ? 1000 : (index + 10), // Give higher z-index to more recently created polygons
-                  }}
-                  onClick={(e) => {
-                      // If we're in drawing mode, let the click pass through
-                    if (isDrawingMode) {
-                        e.stop();
-                      
-                      // Manually forward the click to the map to add a vertex
-                      if (e.latLng && map) {
-                        google.maps.event.trigger(map, 'click', { 
-                          latLng: e.latLng,
-                          stop: () => {} // Dummy function to match event interface
-                        });
-                      }
-                      } else {
-                        // Otherwise, select this polygon
-                        e.stop(); // Prevent the event from bubbling to polygons below
-                        handlePolygonClick(index);
-                    }
-                  }}
-                />
-                );
-              })}
-            </GoogleMap>
-
-            {/* Add toggle button for polygon tools */}
-            {selectedPolygonIndex !== null && (
-              <div className="absolute bottom-20 right-4 z-10">
-                <button
-                  onClick={() => setShowPolygonTools(prev => !prev)}
-                  className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
-                  title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
-                >
-                  <FontAwesomeIcon 
-                    icon={showPolygonTools ? faClose : faCog} 
-                    className="text-xl text-green-700" 
-                  />
-                </button>
-              </div>
-            )}
-
-            {/* Add the PolygonToolsMenu component */}
-            <PolygonToolsMenu 
-              isOpen={showPolygonTools}
-              onClose={() => setShowPolygonTools(false)}
-              onChangeStrokeColor={handleChangeStrokeColor}
-              onChangeFillColor={handleChangeFillColor}
-              onChangeStrokeWeight={handleChangeStrokeWeight}
-              onChangeFillOpacity={handleChangeFillOpacity}
-              onChangeName={handleChangeName}
-              onDelete={handleDeletePolygon}
-              onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
-              onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
-              onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
-              strokeColor={polygonStyles.strokeColor}
-              fillColor={polygonStyles.fillColor}
-              strokeWeight={polygonStyles.strokeWeight}
-              fillOpacity={polygonStyles.fillOpacity}
-              fieldName={polygonStyles.fieldName}
-              fieldImages={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
-                ? fieldImages[selectedPolygonIndex].images 
-                : []}
-              mainImageIndex={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
-                ? fieldImages[selectedPolygonIndex].mainImageIndex 
-                : 0}
-              selectedPolygonIndex={selectedPolygonIndex}
-            />
-
-            {/* Drawing controls banner */}
-            {isDrawingMode && (
-              <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
-                <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
-                  {/* Left side: Cancel button */}
-                  <div>
-                    <button
-                      onClick={handleCancelDrawing}
-                      className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
-                    >
-                      <FontAwesomeIcon icon={faTimes} />
-                    </button>
-                  </div>
-                  
-                  {/* Center: Undo/Redo buttons */}
-                  <div className="flex gap-2 justify-center">
-                    <button
-                      onClick={handleUndo}
-                      disabled={undoStack.length === 0}
-                      className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                        undoStack.length > 0
-                          ? "bg-blue-500 text-white hover:bg-blue-600"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                      title="Undo"
-                    >
-                      <FontAwesomeIcon icon={faUndo} />
-                    </button>
-                    
-                    <button
-                      onClick={handleRedo}
-                  disabled={redoStack.length === 0}
-                      className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                        redoStack.length > 0
-                          ? "bg-blue-500 text-white hover:bg-blue-600"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                  title="Redo"
-                >
-                      <FontAwesomeIcon icon={faRedo} />
-                  </button>
-                  </div>
-                  
-                  {/* Right side: Finish button */}
-                  <div>
-                    <button
-                      onClick={handleFinishDrawing}
-                      disabled={window.tempVerticesRef.length < 3}
-                      className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                        window.tempVerticesRef.length >= 3
-                          ? "bg-green-500 text-white hover:bg-green-600"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                    >
-                      <FontAwesomeIcon icon={faCheck} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <MapControls
-            currentMapType={mapType}
-            onMapTypeChange={setMapType}
-            onLocationClick={handleLocationClick}
-            onToggleFullscreen={handleToggleFullscreen}
-            isLocating={isLocating}
-          />
-
-          <CreateMenu
-            showMenu={showCreateMenu}
-            onToggleMenu={() => {
-              // Deselect any selected field when toggling the create menu
-              if (selectedPolygonIndex !== null) {
-                setSelectedPolygonIndex(null);
-                setShowPolygonTools(false);
-                setSelectedFieldInfo(null);
-              }
-              setShowCreateMenu(!showCreateMenu);
-            }}
-            onOptionSelect={handleCreateOption}
-          />
-
-          <ZoomControls
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-          />
-          
-          {/* Save/Load button group */}
-          {user && (
-            <div className="absolute bottom-32 right-4 z-10 flex flex-col gap-2">
-              <div className="relative">
-                <button
-                  onClick={handleSaveAllFields}
-                  disabled={isDrawingMode || fieldPolygons.length === 0}
-                  className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 ${
-                    isDrawingMode || fieldPolygons.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                  title="Save All Fields"
-                >
-                  <FontAwesomeIcon 
-                    icon={faFileImport} 
-                    className="text-xl text-blue-700" 
-                  />
-                </button>
-                
-                {/* Save options dropdown removed - now automatically saves all fields */}
-              </div>
-              
-              {/* Load Fields button removed as drawn fields should remain on the map */}
             </div>
           )}
           
-          {/* Load fields menu - Removed as drawn fields should remain on the map */}
-          
-          {/* Add hidden file input for importing files */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".kml,.geojson,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              // Handle file upload logic here
-              if (e.target.files && e.target.files.length > 0) {
-                // Process the file (implementation would depend on your requirements)
-                console.log("File selected:", e.target.files[0].name);
-                
-                // Reset the input value to allow selecting the same file again
-                e.target.value = '';
-              }
-            }}
+          {/* Add the drawing mode banner */}
+          {isDrawingMode && (
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Area:</span>
+                  <span className="text-green-400 font-medium">
+                    {bannerInfo.area.toFixed(2)} ha
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Perimeter:</span>
+                  <span className="text-blue-400 font-medium">
+                    {bannerInfo.perimeter.toFixed(2)} km
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Vertices:</span>
+                  <span className="text-purple-400 font-medium">
+                    {bannerInfo.vertices}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <GoogleMap
+            mapContainerStyle={mapStyles.map}
+            center={defaultCenter}
+            zoom={15}
+            onLoad={onLoad}
+            onUnmount={onUnmount}
+            options={mapOptions}
+          >
+            {/* User location marker */}
+            {userLocation && (
+              <>
+                <Marker
+                  position={userLocation}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 12,
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                    strokeColor: '#FFFFFF',
+                    strokeWeight: 2,
+                  }}
+                  zIndex={1000}
+                />
+                <Circle
+                  center={userLocation}
+                  radius={20}
+                  options={{
+                    fillColor: '#4285F4',
+                    fillOpacity: 0.2,
+                    strokeColor: '#4285F4',
+                    strokeOpacity: 0.5,
+                    strokeWeight: 1,
+                  }}
+                />
+              </>
+            )}
+            
+            {/* We're not using DrawingManager anymore for our custom implementation */}
+            
+            {/* Display existing field polygons - render in reverse order so later polygons are drawn on top */}
+            {[...fieldPolygons].reverse().map((polygon, reversedIndex) => {
+              // Calculate the original index from the reversed index
+              const index = fieldPolygons.length - 1 - reversedIndex;
+              return (
+              <Polygon
+                key={index}
+                paths={polygon.getPath().getArray()}
+                options={{
+                    fillColor: polygon.get('fillColor') || polygonColor,
+                    fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
+                    strokeColor: polygon.get('strokeColor') || strokeColor,
+                    strokeWeight: selectedPolygonIndex === index ? 4 : (polygon.get('strokeWeight') || strokeWeight),
+                    clickable: true,
+                    editable: polygon.getEditable(),
+                    draggable: polygon.getDraggable(),
+                    zIndex: selectedPolygonIndex === index ? 1000 : (index + 10), // Give higher z-index to more recently created polygons
+                }}
+                onClick={(e) => {
+                    // If we're in drawing mode, let the click pass through
+                  if (isDrawingMode) {
+                      e.stop();
+                    
+                    // Manually forward the click to the map to add a vertex
+                    if (e.latLng && map) {
+                      google.maps.event.trigger(map, 'click', { 
+                        latLng: e.latLng,
+                        stop: () => {} // Dummy function to match event interface
+                      });
+                    }
+                    } else {
+                      // Otherwise, select this polygon
+                      e.stop(); // Prevent the event from bubbling to polygons below
+                      handlePolygonClick(index);
+                  }
+                }}
+              />
+              );
+            })}
+          </GoogleMap>
+
+          {/* Add toggle button for polygon tools */}
+          {selectedPolygonIndex !== null && (
+            <div className="absolute bottom-20 right-4 z-10">
+              <button
+                onClick={() => setShowPolygonTools(prev => !prev)}
+                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
+                title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
+              >
+                <FontAwesomeIcon 
+                  icon={showPolygonTools ? faTimes : faCog} 
+                  className="text-xl text-green-700" 
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Add the PolygonToolsMenu component */}
+          <PolygonToolsMenu 
+            isOpen={showPolygonTools}
+            onClose={() => setShowPolygonTools(false)}
+            onChangeStrokeColor={handleChangeStrokeColor}
+            onChangeFillColor={handleChangeFillColor}
+            onChangeStrokeWeight={handleChangeStrokeWeight}
+            onChangeFillOpacity={handleChangeFillOpacity}
+            onChangeName={handleChangeName}
+            onDelete={handleDeletePolygon}
+            onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
+            onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
+            onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
+            strokeColor={polygonStyles.strokeColor}
+            fillColor={polygonStyles.fillColor}
+            strokeWeight={polygonStyles.strokeWeight}
+            fillOpacity={polygonStyles.fillOpacity}
+            fieldName={polygonStyles.fieldName}
+            fieldImages={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+              ? fieldImages[selectedPolygonIndex].images 
+              : []}
+            mainImageIndex={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+              ? fieldImages[selectedPolygonIndex].mainImageIndex 
+              : 0}
+            selectedPolygonIndex={selectedPolygonIndex}
           />
+
+          {/* Drawing controls banner */}
+          {isDrawingMode && (
+            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+              <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
+                {/* Left side: Cancel button */}
+                <div>
+                  <button
+                    onClick={handleCancelDrawing}
+                    className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
+                </div>
+                
+                {/* Center: Undo/Redo buttons */}
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      undoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title="Undo"
+                  >
+                    <FontAwesomeIcon icon={faUndo} />
+                  </button>
+                  
+                  <button
+                    onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      redoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Redo"
+              >
+                    <FontAwesomeIcon icon={faRedo} />
+              </button>
+                </div>
+                
+                {/* Right side: Finish button */}
+                <div>
+                  <button
+                    onClick={handleFinishDrawing}
+                    disabled={window.tempVerticesRef.length < 3}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      window.tempVerticesRef.length >= 3
+                        ? "bg-green-500 text-white hover:bg-green-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faCheck} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
+        <MapControls
+          currentMapType={mapType}
+          onMapTypeChange={setMapType}
+          onLocationClick={handleLocationClick}
+          onToggleFullscreen={handleToggleFullscreen}
+          isLocating={isLocating}
+        />
+
+        {/* Map actions menu */}
+        <CreateMenu
+          showMenu={showCreateMenu}
+          onToggleMenu={() => setShowCreateMenu(!showCreateMenu)}
+          onOptionSelect={handleCreateOption}
+        />
+
+        <ZoomControls
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+        />
         
-        {/* Permission error message banner */}
+        {/* Save/Load button group */}
         {user && (
-          <div id="permission-notification" style={{ display: 'none' }} 
-            className="fixed top-14 left-0 right-0 bg-amber-500 text-white p-2 z-50 text-center">
-            <p className="text-sm">
-              Unable to connect to cloud storage. Your fields will be saved locally on this device only.
-            </p>
+          <div className="absolute bottom-32 right-4 z-10 flex flex-col gap-2">
+            <div className="relative">
+              <button
+                onClick={handleSaveAllFields}
+                disabled={isDrawingMode || fieldPolygons.length === 0}
+                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 ${
+                  isDrawingMode || fieldPolygons.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title="Save All Fields"
+              >
+                <FontAwesomeIcon 
+                  icon={faFileImport} 
+                  className="text-xl text-blue-700" 
+                />
+              </button>
+              
+              {/* Save options dropdown removed - now automatically saves all fields */}
+      </div>
+            
+            {/* Load Fields button removed as drawn fields should remain on the map */}
           </div>
         )}
         
-        {/* Save notification banner */}
-        <div id="save-notification" style={{ display: 'none' }} 
-          className="fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center">
-          <p id="save-notification-text" className="text-sm">Notification message</p>
+        {/* Load fields menu - Removed as drawn fields should remain on the map */}
+        
+        {/* Add hidden file input for importing files */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".kml,.geojson,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            // Handle file upload logic here
+            if (e.target.files && e.target.files.length > 0) {
+              // Process the file (implementation would depend on your requirements)
+              console.log("File selected:", e.target.files[0].name);
+              
+              // Reset the input value to allow selecting the same file again
+              e.target.value = '';
+            }
+          }}
+        />
+      </div>
+      
+      {/* Permission error message banner */}
+      {user && (
+        <div id="permission-notification" style={{ display: 'none' }} 
+          className="fixed top-14 left-0 right-0 bg-amber-500 text-white p-2 z-50 text-center">
+          <p className="text-sm">
+            Unable to connect to cloud storage. Your fields will be saved locally on this device only.
+          </p>
         </div>
+      )}
+      
+      {/* Save notification banner */}
+      <div id="save-notification" style={{ display: 'none' }} 
+        className="fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center">
+        <p id="save-notification-text" className="text-sm">Notification message</p>
+      </div>
 
-        {/* Measure Distance Tool */}
-        {map && (
-          <DistanceMeasurement 
-            map={map} 
-            isActive={isMeasuringDistance} 
-            onClose={() => setIsMeasuringDistance(false)} 
-          />
-        )}
-      </LoadScript>
-    </div>
+      {/* DistanceMeasurement Component */}
+      <DistanceMeasurement 
+        map={map}
+        isActive={measureDistanceMode}
+        onExit={handleExitMeasureDistance}
+        onUpdate={handleDistanceUpdate}
+        measurePoints={measurePoints}
+        setMeasurePoints={setMeasurePoints}
+        distance={distance}
+        setDistance={setDistance}
+        isMeasuring={measureDistanceMode}
+        setIsMeasuring={setMeasureDistanceMode}
+      />
+    </LoadScript>
   );
 };
 
