@@ -60,6 +60,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   const draggingRef = useRef<boolean>(false);
   const localPointsRef = useRef<google.maps.LatLngLiteral[]>([]);
   const activeEdgeMarkerRef = useRef<google.maps.Marker | null>(null);
+  const activeVertexMarkerRef = useRef<google.maps.Marker | null>(null);
   
   // Update local points reference when measurePoints changes
   useEffect(() => {
@@ -77,6 +78,9 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     markersRef.current.forEach(marker => {
       marker.setOpacity(1);
     });
+    
+    // Reset active vertex marker reference
+    activeVertexMarkerRef.current = null;
   };
 
   // Function to clear distance labels
@@ -351,7 +355,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
           strokeOpacity: 1.0,
           strokeWeight: 2,
           fillColor: "#00AA00",
-          fillOpacity: 0.1,
+          fillOpacity: 0.0,
           map: mapRef.current,
         });
       } else {
@@ -404,13 +408,25 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     return totalDistance;
   };
 
-  // Display a red marker for dragging instead of the white circle
+  // Modified function to show red marker when dragging a vertex
   const showRedMarker = (marker: google.maps.Marker, index: number) => {
-    // First clear any existing red markers
+    if (!mapRef.current) return;
+    
+    // Clear any existing red markers first
     clearRedMarkers();
     
+    // If there's an existing active vertex marker, reset it
+    if (activeVertexMarkerRef.current && activeVertexMarkerRef.current !== marker) {
+      activeVertexMarkerRef.current.setOpacity(1);
+      const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
+      if (prevDragMarker) {
+        prevDragMarker.setMap(null);
+        activeVertexMarkerRef.current.set('dragMarker', null);
+      }
+    }
+    
     const position = marker.getPosition();
-    if (!position || !mapRef.current) return;
+    if (!position) return;
     
     // Create the red location marker
     const dragMarker = new google.maps.Marker({
@@ -433,103 +449,107 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     
     // Store the drag marker reference in the vertex marker
     marker.set('dragMarker', dragMarker);
+    dragMarkersRef.current.push(dragMarker);
     
-    // Store the vertex index for reference
-    dragMarker.set('vertexIndex', index);
+    // Set this as the active vertex marker
+    activeVertexMarkerRef.current = marker;
     
     // Hide the original circle marker
     marker.setOpacity(0);
     
-    // Add to our collection of drag markers
-    dragMarkersRef.current.push(dragMarker);
+    // Store the original position and vertex index
+    marker.set('originalPosition', position);
+    marker.set('vertexIndex', index);
     
-    // Add event listeners to the drag marker
-    dragMarker.addListener("drag", (e: google.maps.MapMouseEvent) => {
+    // Set dragging state
+    setActiveDragIndex(index);
+    
+    // Add drag event listener to update position
+    dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
       
-      // Get the current points from our local reference
-      const updatedPoints = [...localPointsRef.current];
+      // Set dragging flag
+      draggingRef.current = true;
       
-      // Ensure the index is still valid
-      if (index < updatedPoints.length) {
-        // Update the point at the dragged index
-        updatedPoints[index] = { 
-          lat: e.latLng.lat(), 
-          lng: e.latLng.lng() 
+      // Get the vertex index from the marker
+      const idx = marker.get('vertexIndex');
+      if (typeof idx === 'number') {
+        // Create a copy of current points
+        const updatedPoints = [...localPointsRef.current];
+        
+        // Update the vertex position
+        updatedPoints[idx] = {
+          lat: e.latLng.lat(),
+          lng: e.latLng.lng()
         };
         
-        // Update the original marker position (even while invisible)
-        marker.setPosition(e.latLng);
-        
-        // Update local reference
+        // Update local reference and UI
         localPointsRef.current = updatedPoints;
         
-        // Update the polyline path during dragging for smoother experience
-        if (polylineRef.current) {
-          polylineRef.current.setPath(updatedPoints);
-        }
+        // Update the white marker position (even while invisible)
+        marker.setPosition(e.latLng);
         
-        // Update distance labels and edge markers during dragging
+        // Update the polyline and distance calculations
+        ensurePolyline(updatedPoints);
         updateDistanceLabels(updatedPoints);
-        updateEdgeMarkers();
+        
+        // Calculate new total distance
+        const newDistance = calculateTotalDistance(updatedPoints);
+        setDistance(newDistance);
+        
+        // Update parent component
+        onUpdate(newDistance, updatedPoints);
       }
     });
     
-    dragMarker.addListener("dragend", (e: google.maps.MapMouseEvent) => {
+    // Add dragend listener to finalize position
+    dragMarker.addListener('dragend', () => {
+      // Get the final position
+      const finalPosition = dragMarker.getPosition();
+      if (!finalPosition) return;
+      
+      // Get the vertex index
+      const idx = marker.get('vertexIndex');
+      if (typeof idx !== 'number') return;
+      
+      // Create a copy of current points
+      const updatedPoints = [...localPointsRef.current];
+      
+      // Update the final position
+      updatedPoints[idx] = {
+        lat: finalPosition.lat(),
+        lng: finalPosition.lng()
+      };
+      
+      // Update local reference
+      localPointsRef.current = updatedPoints;
+      
+      // Update parent component
+      setMeasurePoints(updatedPoints);
+      
+      // Calculate final distance
+      const newDistance = calculateTotalDistance(updatedPoints);
+      setDistance(newDistance);
+      onUpdate(newDistance, updatedPoints);
+      
+      // Reset dragging state
       draggingRef.current = false;
       setActiveDragIndex(null);
       
-      const newPosition = dragMarker.getPosition();
-      if (newPosition) {
-        // Get positions directly from all visible markers
-        const updatedPoints = getPointsFromMarkers();
-        
-        // Make sure the index is still valid
-        if (index < updatedPoints.length) {
-          // Ensure the dragged point has the latest position
-          updatedPoints[index] = { 
-            lat: parseFloat(newPosition.lat().toFixed(8)), 
-            lng: parseFloat(newPosition.lng().toFixed(8)) 
-          };
-          
-          // Update the position of the original white marker
-          marker.setPosition(newPosition);
-          marker.setOpacity(1);
-          
-          // Remove the red marker
-          dragMarker.setMap(null);
-          dragMarkersRef.current = dragMarkersRef.current.filter(m => m !== dragMarker);
-          
-          // Update local reference first
-          localPointsRef.current = [...updatedPoints];
-          
-          // Update the parent state
-          setMeasurePoints(updatedPoints);
-          
-          // Update polyline path
-          ensurePolyline(updatedPoints);
-          
-          // Force recreation of all markers to ensure no ghost markers
-          clearMarkers();
-          updatedPoints.forEach((point, idx) => {
-            const newMarker = createMeasureMarker(point, idx);
-            if (newMarker) {
-              markersRef.current.push(newMarker);
-            }
-          });
-          
-          // Update edge markers
-          updateEdgeMarkers();
-          
-          // Calculate and update distance
-          const newDistance = calculateTotalDistance(updatedPoints);
-          setDistance(newDistance);
-          onUpdate(newDistance, updatedPoints);
-        }
-      }
+      // Restore the white marker with updated position
+      marker.setPosition(finalPosition);
+      marker.setOpacity(1);
+      
+      // Remove the red marker
+      dragMarker.setMap(null);
+      
+      // Update edge markers and distance labels
+      updateEdgeMarkers();
+      updateDistanceLabels(updatedPoints);
+      
+      // Clear active references
+      activeVertexMarkerRef.current = null;
     });
-    
-    return dragMarker;
   };
 
   // Sync markers with points
@@ -757,7 +777,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     return points;
   };
 
-  // Create a marker for a measurement point
+  // Update the createMeasureMarker function to use the showRedMarker function
   const createMeasureMarker = (
     position: google.maps.LatLngLiteral,
     index: number
@@ -765,7 +785,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     if (!mapRef.current) return null;
 
     const marker = new google.maps.Marker({
-      position,
+      position: position,
       map: mapRef.current,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -775,25 +795,18 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
         strokeColor: '#FFFFFF',
         strokeWeight: 2,
       },
-      draggable: false, // No longer directly draggable - will use red marker instead
+      draggable: false,
       zIndex: 2
     });
 
-    // Store the vertex index directly in the marker for easier reference
+    // Store vertex index in the marker
     marker.set('vertexIndex', index);
 
-    // Add click handler to show draggable red marker
-    marker.addListener("click", () => {
-      draggingRef.current = true;
-      setActiveDragIndex(index);
-      
-      // Create a snapshot of the current points for the local reference
-      localPointsRef.current = getPointsFromMarkers();
-      
-      // Show the red marker for dragging
+    // Add click listener to activate red marker for dragging
+    marker.addListener('click', () => {
       showRedMarker(marker, index);
     });
-
+    
     // Add double click handler to close the boundary if this is the last vertex
     marker.addListener("dblclick", () => {
       // Check if this is the last vertex
