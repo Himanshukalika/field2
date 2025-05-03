@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
 
 // Add the distance label styles
 const styles = {
@@ -50,6 +50,10 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
 }) => {
   const [isHovering, setIsHovering] = useState(false);
   const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
+  const [undoStack, setUndoStack] = useState<google.maps.LatLngLiteral[][]>([]);
+  const [redoStack, setRedoStack] = useState<google.maps.LatLngLiteral[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const edgeMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -60,7 +64,6 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   const draggingRef = useRef<boolean>(false);
   const localPointsRef = useRef<google.maps.LatLngLiteral[]>([]);
   const activeEdgeMarkerRef = useRef<google.maps.Marker | null>(null);
-  const activeVertexMarkerRef = useRef<google.maps.Marker | null>(null);
   
   // Update local points reference when measurePoints changes
   useEffect(() => {
@@ -69,18 +72,24 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
 
   // Clear all red drag markers from the map
   const clearRedMarkers = () => {
+    // Remove all drag markers
     dragMarkersRef.current.forEach(marker => {
       marker.setMap(null);
     });
     dragMarkersRef.current = [];
     
-    // Reset all white marker opacities
+    // Reset all white vertex marker opacities
     markersRef.current.forEach(marker => {
       marker.setOpacity(1);
     });
     
-    // Reset active vertex marker reference
-    activeVertexMarkerRef.current = null;
+    // Reset all edge marker opacities
+    edgeMarkersRef.current.forEach(marker => {
+      marker.setOpacity(1);
+    });
+    
+    // Reset active edge marker reference
+    activeEdgeMarkerRef.current = null;
   };
 
   // Function to clear distance labels
@@ -137,10 +146,32 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       const p1 = points[i];
       const p2 = points[i + 1];
       
-      // Calculate midpoint for edge marker placement
+      // Use Google Maps LatLng objects for more accurate calculations
+      const p1LatLng = new google.maps.LatLng(p1.lat, p1.lng);
+      const p2LatLng = new google.maps.LatLng(p2.lat, p2.lng);
+      
+      // Find the exact midpoint along the polyline path
+      // This ensures the edge marker stays precisely on the line regardless of zoom
+      let midpointLatLng;
+      
+      try {
+        // Try to use the geometry library for precise calculations
+        const heading = google.maps.geometry.spherical.computeHeading(p1LatLng, p2LatLng);
+        const distance = google.maps.geometry.spherical.computeDistanceBetween(p1LatLng, p2LatLng);
+        midpointLatLng = google.maps.geometry.spherical.computeOffset(p1LatLng, distance/2, heading);
+      } catch (error) {
+        // Fall back to simple averaging if geometry library fails
+        console.warn('Geometry library error, using fallback calculation', error);
+        midpointLatLng = new google.maps.LatLng(
+          (p1.lat + p2.lat) / 2,
+          (p1.lng + p2.lng) / 2
+        );
+      }
+      
+      // Convert to LatLngLiteral
       const midpoint = {
-        lat: (p1.lat + p2.lat) / 2,
-        lng: (p1.lng + p2.lng) / 2
+        lat: midpointLatLng.lat(),
+        lng: midpointLatLng.lng()
       };
       
       // Create edge marker at midpoint with same style as field system
@@ -164,6 +195,9 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       
       // Add click handler to create draggable red marker, matching field system behavior
       marker.addListener('click', () => {
+        // First clear all existing red markers
+        clearRedMarkers();
+        
         // Store this as the active edge marker
         activeEdgeMarkerRef.current = marker;
         
@@ -330,53 +364,21 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     // Use provided points or existing measure points
     const pathPoints = points || localPointsRef.current;
     
-    // Check if measurement is closed (first and last points match)
-    const isClosed = pathPoints.length >= 4 && 
-      pathPoints[0].lat === pathPoints[pathPoints.length-1].lat && 
-      pathPoints[0].lng === pathPoints[pathPoints.length-1].lng;
-    
-    // If we need to change from polyline to polygon (or vice versa) or if it doesn't exist yet
-    if (!polylineRef.current || (isClosed && polylineRef.current instanceof google.maps.Polyline) || 
-        (!isClosed && polylineRef.current instanceof google.maps.Polygon)) {
-      
-      // Clean up existing polyline if it exists
-      if (polylineRef.current) {
-        polylineRef.current.setMap(null);
-        polylineRef.current = null;
-      }
-      
-      // Create the appropriate type based on whether it's closed
-      if (isClosed) {
-        // Create a polygon for closed shapes
-        polylineRef.current = new google.maps.Polygon({
-          paths: pathPoints,
-          geodesic: true,
-          strokeColor: "#00AA00",
-          strokeOpacity: 1.0,
-          strokeWeight: 2,
-          fillColor: "#00AA00",
-          fillOpacity: 0.0,
-          map: mapRef.current,
-        });
-      } else {
-        // Create a polyline for open paths
-        polylineRef.current = new google.maps.Polyline({
-          path: pathPoints,
-          geodesic: true,
-          strokeColor: "#00AA00",
-          strokeOpacity: 1.0,
-          strokeWeight: 2,
-          map: mapRef.current,
-        });
-      }
-    } else {
-      // Just update the existing path
-      if (polylineRef.current instanceof google.maps.Polygon) {
-        (polylineRef.current as google.maps.Polygon).setPaths(pathPoints);
-      } else {
-        (polylineRef.current as google.maps.Polyline).setPath(pathPoints);
-      }
+    // If polyline already exists, just update its path
+    if (polylineRef.current) {
+      polylineRef.current.setPath(pathPoints);
+      return;
     }
+    
+    // Create a new polyline if one doesn't exist
+    polylineRef.current = new google.maps.Polyline({
+      path: pathPoints,
+      geodesic: true,
+      strokeColor: "#00AA00",
+      strokeOpacity: 1.0,
+      strokeWeight: 2,
+      map: mapRef.current,
+    });
   };
 
   // Calculate distance between two points
@@ -408,25 +410,23 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     return totalDistance;
   };
 
-  // Modified function to show red marker when dragging a vertex
+  // Display a red marker for dragging instead of the white circle
   const showRedMarker = (marker: google.maps.Marker, index: number) => {
-    if (!mapRef.current) return;
-    
-    // Clear any existing red markers first
-    clearRedMarkers();
-    
-    // If there's an existing active vertex marker, reset it
-    if (activeVertexMarkerRef.current && activeVertexMarkerRef.current !== marker) {
-      activeVertexMarkerRef.current.setOpacity(1);
-      const prevDragMarker = activeVertexMarkerRef.current.get('dragMarker');
-      if (prevDragMarker) {
-        prevDragMarker.setMap(null);
-        activeVertexMarkerRef.current.set('dragMarker', null);
-      }
+    // Save current state to undo stack before modifying
+    if (localPointsRef.current.length > 0) {
+      saveToUndoStack([...localPointsRef.current]);
     }
     
+    // First clear any existing red markers
+    clearRedMarkers();
+    
+    // Reset all white marker opacities explicitly
+    markersRef.current.forEach(m => {
+      m.setOpacity(1);
+    });
+    
     const position = marker.getPosition();
-    if (!position) return;
+    if (!position || !mapRef.current) return;
     
     // Create the red location marker
     const dragMarker = new google.maps.Marker({
@@ -449,107 +449,103 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     
     // Store the drag marker reference in the vertex marker
     marker.set('dragMarker', dragMarker);
-    dragMarkersRef.current.push(dragMarker);
     
-    // Set this as the active vertex marker
-    activeVertexMarkerRef.current = marker;
+    // Store the vertex index for reference
+    dragMarker.set('vertexIndex', index);
     
     // Hide the original circle marker
     marker.setOpacity(0);
     
-    // Store the original position and vertex index
-    marker.set('originalPosition', position);
-    marker.set('vertexIndex', index);
+    // Add to our collection of drag markers
+    dragMarkersRef.current.push(dragMarker);
     
-    // Set dragging state
-    setActiveDragIndex(index);
-    
-    // Add drag event listener to update position
-    dragMarker.addListener('drag', (e: google.maps.MapMouseEvent) => {
+    // Add event listeners to the drag marker
+    dragMarker.addListener("drag", (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
       
-      // Set dragging flag
-      draggingRef.current = true;
+      // Get the current points from our local reference
+      const updatedPoints = [...localPointsRef.current];
       
-      // Get the vertex index from the marker
-      const idx = marker.get('vertexIndex');
-      if (typeof idx === 'number') {
-        // Create a copy of current points
-        const updatedPoints = [...localPointsRef.current];
-        
-        // Update the vertex position
-        updatedPoints[idx] = {
-          lat: e.latLng.lat(),
-          lng: e.latLng.lng()
+      // Ensure the index is still valid
+      if (index < updatedPoints.length) {
+        // Update the point at the dragged index
+        updatedPoints[index] = { 
+          lat: e.latLng.lat(), 
+          lng: e.latLng.lng() 
         };
         
-        // Update local reference and UI
-        localPointsRef.current = updatedPoints;
-        
-        // Update the white marker position (even while invisible)
+        // Update the original marker position (even while invisible)
         marker.setPosition(e.latLng);
         
-        // Update the polyline and distance calculations
-        ensurePolyline(updatedPoints);
+        // Update local reference
+        localPointsRef.current = updatedPoints;
+        
+        // Update the polyline path during dragging for smoother experience
+        if (polylineRef.current) {
+          polylineRef.current.setPath(updatedPoints);
+        }
+        
+        // Update distance labels and edge markers during dragging
         updateDistanceLabels(updatedPoints);
-        
-        // Calculate new total distance
-        const newDistance = calculateTotalDistance(updatedPoints);
-        setDistance(newDistance);
-        
-        // Update parent component
-        onUpdate(newDistance, updatedPoints);
+        updateEdgeMarkers();
       }
     });
     
-    // Add dragend listener to finalize position
-    dragMarker.addListener('dragend', () => {
-      // Get the final position
-      const finalPosition = dragMarker.getPosition();
-      if (!finalPosition) return;
-      
-      // Get the vertex index
-      const idx = marker.get('vertexIndex');
-      if (typeof idx !== 'number') return;
-      
-      // Create a copy of current points
-      const updatedPoints = [...localPointsRef.current];
-      
-      // Update the final position
-      updatedPoints[idx] = {
-        lat: finalPosition.lat(),
-        lng: finalPosition.lng()
-      };
-      
-      // Update local reference
-      localPointsRef.current = updatedPoints;
-      
-      // Update parent component
-      setMeasurePoints(updatedPoints);
-      
-      // Calculate final distance
-      const newDistance = calculateTotalDistance(updatedPoints);
-      setDistance(newDistance);
-      onUpdate(newDistance, updatedPoints);
-      
-      // Reset dragging state
+    dragMarker.addListener("dragend", (e: google.maps.MapMouseEvent) => {
       draggingRef.current = false;
       setActiveDragIndex(null);
       
-      // Restore the white marker with updated position
-      marker.setPosition(finalPosition);
-      marker.setOpacity(1);
-      
-      // Remove the red marker
-      dragMarker.setMap(null);
-      
-      // Update edge markers and distance labels
-      updateEdgeMarkers();
-      updateDistanceLabels(updatedPoints);
-      
-      // Clear active references
-      activeVertexMarkerRef.current = null;
+      const newPosition = dragMarker.getPosition();
+      if (newPosition) {
+        // Get positions directly from all visible markers
+        const updatedPoints = getPointsFromMarkers();
+        
+        // Make sure the index is still valid
+        if (index < updatedPoints.length) {
+          // Ensure the dragged point has the latest position
+          updatedPoints[index] = { 
+            lat: parseFloat(newPosition.lat().toFixed(8)), 
+            lng: parseFloat(newPosition.lng().toFixed(8)) 
+          };
+          
+          // Update the position of the original white marker
+          marker.setPosition(newPosition);
+          marker.setOpacity(1);
+          
+          // Remove the red marker
+          dragMarker.setMap(null);
+          dragMarkersRef.current = dragMarkersRef.current.filter(m => m !== dragMarker);
+          
+          // Update local reference first
+          localPointsRef.current = [...updatedPoints];
+          
+          // Update the parent state
+          setMeasurePoints(updatedPoints);
+          
+          // Update polyline path
+          ensurePolyline(updatedPoints);
+          
+          // Force recreation of all markers to ensure no ghost markers
+          clearMarkers();
+          updatedPoints.forEach((point, idx) => {
+            const newMarker = createMeasureMarker(point, idx);
+            if (newMarker) {
+              markersRef.current.push(newMarker);
+            }
+          });
+          
+          // Update edge markers
+          updateEdgeMarkers();
+          
+          // Calculate and update distance
+          const newDistance = calculateTotalDistance(updatedPoints);
+          setDistance(newDistance);
+          onUpdate(newDistance, updatedPoints);
+        }
+      }
     });
+    
+    return dragMarker;
   };
 
   // Sync markers with points
@@ -594,54 +590,106 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       const p1 = points[i];
       const p2 = points[i + 1];
       
-      // Calculate midpoint for label placement
-      const midpoint = {
-        lat: (p1.lat + p2.lat) / 2,
-        lng: (p1.lng + p2.lng) / 2
-      };
+      // Use Google Maps LatLng objects for more accurate calculations
+      const p1LatLng = new google.maps.LatLng(p1.lat, p1.lng);
+      const p2LatLng = new google.maps.LatLng(p2.lat, p2.lng);
       
-      // Calculate a perpendicular offset for the label to avoid overlap with the line
-      // First get the angle of the line
-      const dx = p2.lng - p1.lng;
-      const dy = p2.lat - p1.lat;
-      const angle = Math.atan2(dy, dx);
+      // Calculate midpoint using geometry library for more accuracy
+      let midpoint;
+      try {
+        // Try to use the spherical geometry library for accurate midpoint calculation
+        const distance = google.maps.geometry.spherical.computeDistanceBetween(p1LatLng, p2LatLng);
+        const heading = google.maps.geometry.spherical.computeHeading(p1LatLng, p2LatLng);
+        const midpointLatLng = google.maps.geometry.spherical.computeOffset(p1LatLng, distance/2, heading);
+        
+        midpoint = {
+          lat: midpointLatLng.lat(),
+          lng: midpointLatLng.lng()
+        };
+      } catch (error) {
+        // Fallback to simple averaging if geometry library isn't available
+        midpoint = {
+          lat: (p1.lat + p2.lat) / 2,
+          lng: (p1.lng + p2.lng) / 2
+        };
+      }
       
-      // Calculate the perpendicular angle (90 degrees = PI/2 radians)
-      const perpAngle = angle + Math.PI / 2;
-      
-      // Calculate segment length to adjust offset (longer segments get larger offsets)
+      // Calculate segment length to adjust offset
       const segmentDistance = calculateDistance(p1, p2);
       let distanceText = '';
       
-      // Base offset distance in degrees (approximately 30-50 meters depending on latitude)
-      let offsetDistance = 0.0005; // Reduced offset distance (was 0.001)
-      
-      // Adjust offset distance based on segment length
-      if (segmentDistance > 1000) {
-        // For longer segments, increase offset but still keep it smaller
-        offsetDistance = 0.0008; // Reduced from 0.0015
-      } else if (segmentDistance < 100) {
-        // For very short segments, use minimal offset
-        offsetDistance = 0.0003; // Reduced from 0.0008
-      }
-      
-      // Adjust offset based on map zoom level if map is available
-      if (mapRef.current) {
-        const zoom = mapRef.current.getZoom();
-        if (zoom !== undefined) {
-          // Scale factor based on zoom (higher zoom = smaller offset)
-          // At zoom level 20 (very close), reduce the offset
-          // At zoom level 10 (far out), increase the offset
-          const zoomScaleFactor = Math.pow(1.3, 15 - zoom);
-          offsetDistance *= zoomScaleFactor;
+      // Calculate offset for label using geometry library when possible
+      let offsetPoint;
+      try {
+        // Use the perpendicular offset with geometry library
+        const heading = google.maps.geometry.spherical.computeHeading(p1LatLng, p2LatLng);
+        const perpHeading = heading + 90; // Perpendicular heading
+        
+        // Base offset distance in meters (instead of degrees)
+        let offsetDistanceMeters = 25; // Default offset in meters
+        
+        // Adjust offset distance based on segment length
+        if (segmentDistance > 1000) {
+          offsetDistanceMeters = 40;
+        } else if (segmentDistance < 100) {
+          offsetDistanceMeters = 15;
         }
+        
+        // Adjust offset based on map zoom level
+        if (mapRef.current) {
+          const zoom = mapRef.current.getZoom();
+          if (zoom !== undefined) {
+            const zoomScaleFactor = Math.pow(1.3, 15 - zoom);
+            offsetDistanceMeters *= zoomScaleFactor;
+          }
+        }
+        
+        // Calculate the offset position accurately using the geometry library
+        const offsetLatLng = google.maps.geometry.spherical.computeOffset(
+          new google.maps.LatLng(midpoint.lat, midpoint.lng), 
+          offsetDistanceMeters, 
+          perpHeading
+        );
+        
+        offsetPoint = {
+          lat: offsetLatLng.lat(),
+          lng: offsetLatLng.lng()
+        };
+      } catch (error) {
+        // Fallback to simple trig-based offset if geometry fails
+        // Calculate angle of the line
+        const dx = p2.lng - p1.lng;
+        const dy = p2.lat - p1.lat;
+        const angle = Math.atan2(dy, dx);
+        
+        // Calculate perpendicular angle
+        const perpAngle = angle + Math.PI / 2;
+        
+        // Base offset distance in degrees
+        let offsetDistance = 0.0005;
+        
+        // Adjust based on segment length
+        if (segmentDistance > 1000) {
+          offsetDistance = 0.0008;
+        } else if (segmentDistance < 100) {
+          offsetDistance = 0.0003;
+        }
+        
+        // Adjust based on zoom
+        if (mapRef.current) {
+          const zoom = mapRef.current.getZoom();
+          if (zoom !== undefined) {
+            const zoomScaleFactor = Math.pow(1.3, 15 - zoom);
+            offsetDistance *= zoomScaleFactor;
+          }
+        }
+        
+        // Calculate offset point using simple trigonometry
+        offsetPoint = {
+          lat: midpoint.lat + Math.sin(perpAngle) * offsetDistance,
+          lng: midpoint.lng + Math.cos(perpAngle) * offsetDistance
+        };
       }
-      
-      // Calculate the offset position
-      const offsetPoint = {
-        lat: midpoint.lat + Math.sin(perpAngle) * offsetDistance,
-        lng: midpoint.lng + Math.cos(perpAngle) * offsetDistance
-      };
       
       // Format distance for display
       if (segmentDistance < 1000) {
@@ -777,7 +825,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     return points;
   };
 
-  // Update the createMeasureMarker function to use the showRedMarker function
+  // Create a marker for a measurement point
   const createMeasureMarker = (
     position: google.maps.LatLngLiteral,
     index: number
@@ -785,7 +833,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     if (!mapRef.current) return null;
 
     const marker = new google.maps.Marker({
-      position: position,
+      position,
       map: mapRef.current,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -795,48 +843,26 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
         strokeColor: '#FFFFFF',
         strokeWeight: 2,
       },
-      draggable: false,
+      draggable: false, // No longer directly draggable - will use red marker instead
       zIndex: 2
     });
 
-    // Store vertex index in the marker
+    // Store the vertex index directly in the marker for easier reference
     marker.set('vertexIndex', index);
 
-    // Add click listener to activate red marker for dragging
-    marker.addListener('click', () => {
+    // Add click handler to show draggable red marker
+    marker.addListener("click", () => {
+      // First clear any existing red markers
+      clearRedMarkers();
+      
+      draggingRef.current = true;
+      setActiveDragIndex(index);
+      
+      // Create a snapshot of the current points for the local reference
+      localPointsRef.current = getPointsFromMarkers();
+      
+      // Show the red marker for dragging
       showRedMarker(marker, index);
-    });
-    
-    // Add double click handler to close the boundary if this is the last vertex
-    marker.addListener("dblclick", () => {
-      // Check if this is the last vertex
-      if (index === localPointsRef.current.length - 1 && localPointsRef.current.length >= 3) {
-        // Close the boundary by adding the first point to the end of the array
-        const updatedPoints = [...localPointsRef.current];
-        
-        // Add the first point again to close the loop
-        updatedPoints.push(localPointsRef.current[0]);
-        
-        // Update local reference
-        localPointsRef.current = updatedPoints;
-        
-        // Update parent state
-        setMeasurePoints(updatedPoints);
-        
-        // Update the polyline
-        ensurePolyline(updatedPoints);
-        
-        // Update distance labels
-        updateDistanceLabels(updatedPoints);
-        
-        // Update edge markers
-        updateEdgeMarkers();
-        
-        // Calculate and update distance
-        const newDistance = calculateTotalDistance(updatedPoints);
-        setDistance(newDistance);
-        onUpdate(newDistance, updatedPoints);
-      }
     });
 
     return marker;
@@ -844,6 +870,11 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
 
   // Add a measurement point
   const addMeasurePoint = (latLng: google.maps.LatLngLiteral) => {
+    // Save current state to undo stack before adding new point
+    if (localPointsRef.current.length > 0) {
+      saveToUndoStack([...localPointsRef.current]);
+    }
+    
     // Calculate the new index for this point
     const newIndex = localPointsRef.current.length;
     
@@ -883,6 +914,12 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     setMeasurePoints([]);
     setDistance(0);
     onUpdate(0, []);
+    
+    // Reset undo/redo stacks
+    setUndoStack([]);
+    setRedoStack([]);
+    setCanUndo(false);
+    setCanRedo(false);
     
     // Clear polyline
     if (polylineRef.current) {
@@ -969,11 +1006,31 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       });
     }
     
+    // Add zoom changed listener to update markers and labels during zoom
+    let zoomListener: google.maps.MapsEventListener | null = null;
+    if (map) {
+      zoomListener = map.addListener("zoom_changed", () => {
+        // Only update if we have measurement points
+        if (localPointsRef.current.length >= 2) {
+          // Update edge markers after a small delay to allow the map to finish rendering
+          setTimeout(() => {
+            updateEdgeMarkers();
+            updateDistanceLabels(localPointsRef.current);
+          }, 50);
+        }
+      });
+    }
+    
     // Cleanup function
     return () => {
       if (clickListenerRef.current) {
         google.maps.event.removeListener(clickListenerRef.current);
         clickListenerRef.current = null;
+      }
+      
+      // Clean up zoom listener
+      if (zoomListener) {
+        google.maps.event.removeListener(zoomListener);
       }
       
       // Clean up polyline and markers if the component unmounts
@@ -1006,10 +1063,240 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     }
   }, [measurePoints]);
 
+  // Function to save the current state to the undo stack
+  const saveToUndoStack = useCallback((points: google.maps.LatLngLiteral[]) => {
+    setUndoStack(prev => [...prev, [...points]]);
+    setRedoStack([]); // Clear redo stack after a new action
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  // Handle undo action
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    
+    // Get the previous state
+    const prevState = undoStack[undoStack.length - 1];
+    
+    // Save current state to redo stack
+    const currentState = [...localPointsRef.current];
+    setRedoStack(prev => [...prev, currentState]);
+    setCanRedo(true);
+    
+    // Update points with previous state
+    localPointsRef.current = [...prevState];
+    setMeasurePoints(prevState);
+    
+    // Calculate and update distance
+    const newDistance = calculateTotalDistance(prevState);
+    setDistance(newDistance);
+    onUpdate(newDistance, prevState);
+    
+    // Update the UI
+    updateUI(prevState);
+    
+    // Update the undo stack
+    setUndoStack(prev => prev.slice(0, -1));
+    setCanUndo(undoStack.length > 1);
+  }, [undoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate]);
+
+  // Handle redo action
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    
+    // Get the next state
+    const nextState = redoStack[redoStack.length - 1];
+    
+    // Save current state to undo stack
+    const currentState = [...localPointsRef.current];
+    setUndoStack(prev => [...prev, currentState]);
+    setCanUndo(true);
+    
+    // Update points with next state
+    localPointsRef.current = [...nextState];
+    setMeasurePoints(nextState);
+    
+    // Calculate and update total distance
+    const newDistance = calculateTotalDistance(nextState);
+    setDistance(newDistance);
+    onUpdate(newDistance, nextState);
+    
+    // Update the UI
+    updateUI(nextState);
+    
+    // Update the redo stack
+    setRedoStack(prev => prev.slice(0, -1));
+    setCanRedo(redoStack.length > 1);
+  }, [redoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate]);
+  
+  // Function to close the measurement path (connect first and last points)
+  const handleClosePath = useCallback(() => {
+    if (localPointsRef.current.length < 3) return;
+    
+    // Get the first and last vertices
+    const firstPoint = localPointsRef.current[0];
+    const lastPoint = localPointsRef.current[localPointsRef.current.length - 1];
+    
+    // Check if the path is already closed (first point = last point)
+    if (firstPoint.lat === lastPoint.lat && firstPoint.lng === lastPoint.lng) {
+      return; // Path is already closed, do nothing
+    }
+    
+    // Save current state to undo stack before modifying
+    saveToUndoStack([...localPointsRef.current]);
+    
+    // Add the first vertex to the end to close the path
+    const newPoints = [...localPointsRef.current, { ...firstPoint }];
+    
+    // Update local reference
+    localPointsRef.current = newPoints;
+    
+    // Update parent state
+    setMeasurePoints(newPoints);
+    
+    // Calculate and update distance
+    const newDistance = calculateTotalDistance(newPoints);
+    setDistance(newDistance);
+    onUpdate(newDistance, newPoints);
+    
+    // Add marker and update polyline
+    const marker = createMeasureMarker(firstPoint, newPoints.length - 1);
+    if (marker) {
+      markersRef.current.push(marker);
+    }
+    
+    // Update the UI
+    ensurePolyline(newPoints);
+    updateDistanceLabels(newPoints);
+    updateEdgeMarkers();
+  }, [onUpdate, setMeasurePoints, saveToUndoStack, createMeasureMarker, calculateTotalDistance, 
+    updateDistanceLabels, updateEdgeMarkers, ensurePolyline, setDistance]);
+
   return (
-    <div className="absolute bottom-4 left-4 flex space-x-2">
-      {/* Both icon buttons have been removed */}
-    </div>
+    <>
+      {/* Top panel with controls when measuring is active */}
+      {isMeasuring && (
+        <div className="absolute top-0 left-0 right-0 bg-yellow-500 shadow-lg z-50">
+          <div className="w-full flex justify-between items-center p-2">
+            <button
+              onClick={() => {
+                resetMeasurement();
+                onExit();
+              }}
+              className="p-1 text-white hover:bg-white/20 rounded transition-colors"
+              title="Cancel measurement"
+            >
+              <FontAwesomeIcon icon={faTimes} className="text-xl" />
+            </button>
+            
+            {/* Empty center div to maintain layout */}
+            <div className="flex-1"></div>
+            
+            <div className="flex-1 text-right">
+              <button
+                onClick={() => {
+                  // Save functionality can be implemented here
+                  alert("Measurement saved: " + (distance < 1000 
+                    ? `${Math.round(distance)}m` 
+                    : `${(distance / 1000).toFixed(2)}km`));
+                  onExit();
+                }}
+                className="py-1 px-4 text-white hover:bg-white/20 rounded transition-colors"
+              >
+                <span className="font-medium">SAVE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Black transparent panel showing measurement stats */}
+      {isMeasuring && (
+        <div className="absolute top-12 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+          <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-100">Distance:</span>
+              <div className="flex-1 text-center">
+                <span className="font-semibold text-white">
+                  {distance < 1000 
+                    ? `${Math.round(distance)}m` 
+                    : `${(distance / 1000).toFixed(2)}km`}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-100">Vertices:</span>
+              <span className="text-purple-400 font-medium">
+                {measurePoints.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="absolute bottom-4 left-4 flex space-x-2">
+        {/* Both icon buttons have been removed */}
+      </div>
+
+      {/* Undo/Redo panel at the bottom */}
+      {isMeasuring && localPointsRef.current.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+          <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
+            {/* Left side: placeholder for layout balance */}
+            <div className="w-10"></div>
+            
+            {/* Center: Undo/Redo buttons */}
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={handleUndo}
+                disabled={!canUndo}
+                className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                  canUndo
+                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Undo"
+              >
+                <FontAwesomeIcon icon={faUndo} />
+              </button>
+              
+              <button
+                onClick={handleRedo}
+                disabled={!canRedo}
+                className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                  canRedo
+                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Redo"
+              >
+                <FontAwesomeIcon icon={faRedo} />
+              </button>
+            </div>
+            
+            {/* Right side: Close Path button */}
+            <div>
+              <button
+                onClick={handleClosePath}
+                disabled={localPointsRef.current.length < 3}
+                className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                  localPointsRef.current.length >= 3
+                    ? "bg-green-500 text-white hover:bg-green-600"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Close Path"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
