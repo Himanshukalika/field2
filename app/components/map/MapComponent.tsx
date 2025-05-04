@@ -3062,6 +3062,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     }
   }, [fieldPolygons, user]);
   
+  // Expose handleSaveAllFields to window for use in DistanceMeasurement component
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.handleSaveAllFields = handleSaveAllFields;
+    }
+    
+    // Cleanup function
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete window.handleSaveAllFields;
+      }
+    };
+  }, [handleSaveAllFields]);
+  
   // Function to save the currently selected field to Firestore
   const handleSaveCurrentField = useCallback(async () => {
     if (!user) {
@@ -3484,32 +3498,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           onZoomOut={handleZoomOut}
         />
         
-        {/* Save/Load button group */}
-        {user && (
-          <div className="absolute bottom-32 right-4 z-10 flex flex-col gap-2">
-            <div className="relative">
-              <button
-                onClick={handleSaveAllFields}
-                disabled={isDrawingMode || fieldPolygons.length === 0}
-                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 ${
-                  isDrawingMode || fieldPolygons.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                title="Save All Fields"
-              >
-                <FontAwesomeIcon 
-                  icon={faFileImport} 
-                  className="text-xl text-blue-700" 
-                />
-              </button>
-              
-              {/* Save options dropdown removed - now automatically saves all fields */}
-      </div>
-            
-            {/* Load Fields button removed as drawn fields should remain on the map */}
-          </div>
-        )}
-        
-        {/* Load fields menu - Removed as drawn fields should remain on the map */}
+        {/* Save/Load button group - Removed as functionality has been moved to distance measurement component */}
         
         {/* Add hidden file input for importing files */}
         <input
@@ -3570,6 +3559,7 @@ declare global {
     tempVerticesRef: google.maps.LatLng[];
     tempMarkersRef: google.maps.Marker[];
     tempEdgeMarkersRef: (google.maps.Marker | google.maps.OverlayView)[];
+    handleSaveAllFields?: () => Promise<void>;
   }
 }
 

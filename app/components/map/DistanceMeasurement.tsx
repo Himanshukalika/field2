@@ -54,6 +54,8 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   const [redoStack, setRedoStack] = useState<google.maps.LatLngLiteral[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [pathClosed, setPathClosed] = useState(false);
+  const [areaInSqMeters, setAreaInSqMeters] = useState<number>(0);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const edgeMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -410,6 +412,22 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     return totalDistance;
   };
 
+  // Calculate area of a polygon
+  const calculatePolygonArea = useCallback((points: google.maps.LatLngLiteral[]) => {
+    if (!points || points.length < 3) return 0;
+    
+    try {
+      // Create a polygon path from the points
+      const path = points.map(point => new google.maps.LatLng(point.lat, point.lng));
+      
+      // Use Google Maps geometry library to calculate area
+      return google.maps.geometry.spherical.computeArea(path);
+    } catch (error) {
+      console.error("Error calculating area:", error);
+      return 0;
+    }
+  }, []);
+
   // Display a red marker for dragging instead of the white circle
   const showRedMarker = (marker: google.maps.Marker, index: number) => {
     // Save current state to undo stack before modifying
@@ -609,9 +627,9 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       } catch (error) {
         // Fallback to simple averaging if geometry library isn't available
         midpoint = {
-          lat: (p1.lat + p2.lat) / 2,
-          lng: (p1.lng + p2.lng) / 2
-        };
+        lat: (p1.lat + p2.lat) / 2,
+        lng: (p1.lng + p2.lng) / 2
+      };
       }
       
       // Calculate segment length to adjust offset
@@ -658,37 +676,37 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       } catch (error) {
         // Fallback to simple trig-based offset if geometry fails
         // Calculate angle of the line
-        const dx = p2.lng - p1.lng;
-        const dy = p2.lat - p1.lat;
-        const angle = Math.atan2(dy, dx);
-        
+      const dx = p2.lng - p1.lng;
+      const dy = p2.lat - p1.lat;
+      const angle = Math.atan2(dy, dx);
+      
         // Calculate perpendicular angle
-        const perpAngle = angle + Math.PI / 2;
-        
+      const perpAngle = angle + Math.PI / 2;
+      
         // Base offset distance in degrees
         let offsetDistance = 0.0005;
-        
+      
         // Adjust based on segment length
-        if (segmentDistance > 1000) {
+      if (segmentDistance > 1000) {
           offsetDistance = 0.0008;
-        } else if (segmentDistance < 100) {
+      } else if (segmentDistance < 100) {
           offsetDistance = 0.0003;
-        }
-        
+      }
+      
         // Adjust based on zoom
-        if (mapRef.current) {
-          const zoom = mapRef.current.getZoom();
-          if (zoom !== undefined) {
-            const zoomScaleFactor = Math.pow(1.3, 15 - zoom);
-            offsetDistance *= zoomScaleFactor;
-          }
+      if (mapRef.current) {
+        const zoom = mapRef.current.getZoom();
+        if (zoom !== undefined) {
+          const zoomScaleFactor = Math.pow(1.3, 15 - zoom);
+          offsetDistance *= zoomScaleFactor;
         }
-        
+      }
+      
         // Calculate offset point using simple trigonometry
         offsetPoint = {
-          lat: midpoint.lat + Math.sin(perpAngle) * offsetDistance,
-          lng: midpoint.lng + Math.cos(perpAngle) * offsetDistance
-        };
+        lat: midpoint.lat + Math.sin(perpAngle) * offsetDistance,
+        lng: midpoint.lng + Math.cos(perpAngle) * offsetDistance
+      };
       }
       
       // Format distance for display
@@ -921,6 +939,10 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     setCanUndo(false);
     setCanRedo(false);
     
+    // Reset area calculation
+    setPathClosed(false);
+    setAreaInSqMeters(0);
+    
     // Clear polyline
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
@@ -1092,13 +1114,33 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     setDistance(newDistance);
     onUpdate(newDistance, prevState);
     
+    // Check if the path is closed after undo
+    if (prevState.length >= 2) {
+      const firstPoint = prevState[0];
+      const lastPoint = prevState[prevState.length - 1];
+      const isPathClosed = (firstPoint.lat === lastPoint.lat && firstPoint.lng === lastPoint.lng);
+      
+      setPathClosed(isPathClosed);
+      
+      // Recalculate area if path is closed
+      if (isPathClosed) {
+        const area = calculatePolygonArea(prevState);
+        setAreaInSqMeters(area);
+      } else {
+        setAreaInSqMeters(0);
+      }
+    } else {
+      setPathClosed(false);
+      setAreaInSqMeters(0);
+    }
+    
     // Update the UI
     updateUI(prevState);
     
     // Update the undo stack
     setUndoStack(prev => prev.slice(0, -1));
     setCanUndo(undoStack.length > 1);
-  }, [undoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate]);
+  }, [undoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate, updateUI, calculatePolygonArea]);
 
   // Handle redo action
   const handleRedo = useCallback(() => {
@@ -1121,13 +1163,33 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     setDistance(newDistance);
     onUpdate(newDistance, nextState);
     
+    // Check if the path is closed after redo
+    if (nextState.length >= 2) {
+      const firstPoint = nextState[0];
+      const lastPoint = nextState[nextState.length - 1];
+      const isPathClosed = (firstPoint.lat === lastPoint.lat && firstPoint.lng === lastPoint.lng);
+      
+      setPathClosed(isPathClosed);
+      
+      // Recalculate area if path is closed
+      if (isPathClosed) {
+        const area = calculatePolygonArea(nextState);
+        setAreaInSqMeters(area);
+      } else {
+        setAreaInSqMeters(0);
+      }
+    } else {
+      setPathClosed(false);
+      setAreaInSqMeters(0);
+    }
+    
     // Update the UI
     updateUI(nextState);
     
     // Update the redo stack
     setRedoStack(prev => prev.slice(0, -1));
     setCanRedo(redoStack.length > 1);
-  }, [redoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate]);
+  }, [redoStack, setMeasurePoints, calculateTotalDistance, setDistance, onUpdate, updateUI, calculatePolygonArea]);
   
   // Function to close the measurement path (connect first and last points)
   const handleClosePath = useCallback(() => {
@@ -1159,6 +1221,11 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     setDistance(newDistance);
     onUpdate(newDistance, newPoints);
     
+    // Calculate area when path is closed
+    const area = calculatePolygonArea(newPoints);
+    setAreaInSqMeters(area);
+    setPathClosed(true);
+    
     // Add marker and update polyline
     const marker = createMeasureMarker(firstPoint, newPoints.length - 1);
     if (marker) {
@@ -1170,7 +1237,39 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     updateDistanceLabels(newPoints);
     updateEdgeMarkers();
   }, [onUpdate, setMeasurePoints, saveToUndoStack, createMeasureMarker, calculateTotalDistance, 
-    updateDistanceLabels, updateEdgeMarkers, ensurePolyline, setDistance]);
+      updateDistanceLabels, updateEdgeMarkers, ensurePolyline, setDistance, calculatePolygonArea]);
+
+  // Format area for display
+  const formatArea = useCallback((areaSqM: number): string => {
+    if (areaSqM >= 10000) {
+      // Convert to hectares if area is large
+      return `${(areaSqM / 10000).toFixed(2)} ha`;
+    } else {
+      // Otherwise show in square meters
+      return `${Math.round(areaSqM)} m²`;
+    }
+  }, []);
+
+  // Check if path is closed and update area state
+  const checkPathClosedAndUpdateArea = useCallback((points: google.maps.LatLngLiteral[]) => {
+    if (points.length >= 3) {
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
+      const isPathClosed = (firstPoint.lat === lastPoint.lat && firstPoint.lng === lastPoint.lng);
+      
+      setPathClosed(isPathClosed);
+      
+      if (isPathClosed) {
+        const area = calculatePolygonArea(points);
+        setAreaInSqMeters(area);
+      } else {
+        setAreaInSqMeters(0);
+      }
+    } else {
+      setPathClosed(false);
+      setAreaInSqMeters(0);
+    }
+  }, [calculatePolygonArea]);
 
   return (
     <>
@@ -1195,17 +1294,63 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
             <div className="flex-1 text-right">
               <button
                 onClick={() => {
-                  // Save functionality can be implemented here
-                  alert("Measurement saved: " + (distance < 1000 
-                    ? `${Math.round(distance)}m` 
-                    : `${(distance / 1000).toFixed(2)}km`));
+                  // Store the current points for the final polyline
+                  const savedPoints = [...localPointsRef.current];
+                  
+                  // Use the existing clearMarkers function to remove all markers
+                  clearMarkers();
+                  
+                  // Remove existing polyline
+                  if (polylineRef.current) {
+                    polylineRef.current.setMap(null);
+                    polylineRef.current = null;
+                  }
+                  
+                  // Create a final non-interactive polyline that will persist
+                  if (map && savedPoints.length > 1) {
+                    new google.maps.Polyline({
+                      path: savedPoints,
+                      geodesic: true,
+                      strokeColor: "#00AA00", 
+                      strokeOpacity: 1.0,
+                      strokeWeight: 3,
+                      clickable: false,
+                      map: map
+                    });
+
+                    // Also save the field/distance measurement when clicking save
+                    if (typeof window !== 'undefined' && window.handleSaveAllFields) {
+                      window.handleSaveAllFields();
+                    }
+                  }
+                  
+                  // Clear local points reference to prevent recreation of markers
+                  localPointsRef.current = [];
+                  
+                  // Clear measurement points in state
+                  setMeasurePoints([]);
+                  
+                  // Disable dragging functionality
+                  draggingRef.current = false;
+                  setActiveDragIndex(null);
+                  
+                  // Remove click listeners
+                  if (clickListenerRef.current && map) {
+                    google.maps.event.removeListener(clickListenerRef.current);
+                    clickListenerRef.current = null;
+                  }
+                  
+                  // Set measuring mode to false
+                  setIsMeasuring(false);
+                  
+                  // Exit measurement mode
                   onExit();
                 }}
                 className="py-1 px-4 text-white hover:bg-white/20 rounded transition-colors"
               >
                 <span className="font-medium">SAVE</span>
               </button>
-            </div>
+    </div>
           </div>
         </div>
       )}
@@ -1214,6 +1359,14 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       {isMeasuring && (
         <div className="absolute top-12 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
           <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+            {pathClosed && areaInSqMeters > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-100">Area:</span>
+                <span className="text-green-400 font-medium">
+                  {formatArea(areaInSqMeters)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="font-semibold text-gray-100">Distance:</span>
               <div className="flex-1 text-center">
@@ -1234,10 +1387,6 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
         </div>
       )}
       
-      <div className="absolute bottom-4 left-4 flex space-x-2">
-        {/* Both icon buttons have been removed */}
-      </div>
-
       {/* Undo/Redo panel at the bottom */}
       {isMeasuring && localPointsRef.current.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
