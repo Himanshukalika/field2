@@ -97,6 +97,19 @@ export interface FieldData extends Field {
   mainImageIndex?: number;
 }
 
+// Add interface for distance measurement data
+export interface DistanceMeasurementData {
+  id: string;
+  userId: string;
+  points: { lat: number; lng: number }[];
+  distance: number;
+  name?: string;
+  createdAt: any;
+  updatedAt: any;
+  isClosed?: boolean;
+  area?: number | null;
+}
+
 // Function to check if Firestore rules are properly set
 export const checkFirestorePermissions = async (): Promise<boolean> => {
   try {
@@ -347,6 +360,214 @@ const deleteFieldFromLocalStorage = (fieldId: string): boolean => {
     return true;
   } catch (error) {
     console.error('Error deleting field from localStorage:', error);
+    return false;
+  }
+};
+
+// Save distance measurement to Firestore (with fallback to local storage if permissions fail)
+export const saveDistanceMeasurement = async (measurementData: Omit<DistanceMeasurementData, 'userId' | 'createdAt' | 'updatedAt'>) => {
+  try {
+    console.log("Starting to save distance measurement to Firestore:", measurementData);
+    
+    const user = auth.currentUser;
+    if (!user) {
+      console.error("No user logged in when trying to save measurement");
+      throw new Error('User must be logged in to save distance measurement');
+    }
+    console.log("User authenticated:", user.uid);
+
+    const measurementsCollection = collection(db, 'distance_measurements');
+    console.log("Collection reference created:", measurementsCollection.path);
+    
+    const now = serverTimestamp();
+    const data: DistanceMeasurementData = {
+      ...measurementData,
+      userId: user.uid,
+      createdAt: now,
+      updatedAt: now,
+    };
+    console.log("Prepared data for Firestore:", JSON.stringify(data, (key, value) => 
+      key === 'createdAt' || key === 'updatedAt' ? 'timestamp' : value));
+    
+    // For new measurements where we don't have a doc reference
+    // Use addDoc instead which lets Firestore generate the ID
+    let measurementId = measurementData.id;
+    if (!measurementId || measurementId.trim() === '') {
+      console.log("No ID provided, using addDoc to generate one");
+      const docRef = await addDoc(measurementsCollection, data);
+      measurementId = docRef.id;
+      data.id = measurementId;
+      console.log("Document created with ID:", measurementId);
+    } else {
+      // We have an existing ID, so use setDoc with that specific ID
+      console.log("Using provided ID:", measurementId);
+      const measurementRef = doc(measurementsCollection, measurementId);
+      await setDoc(measurementRef, data);
+      console.log("Document saved with setDoc");
+    }
+    
+    // Also save to localStorage as a fallback
+    saveDistanceMeasurementToLocalStorage(data);
+    console.log("Successfully saved measurement to Firestore and localStorage");
+    
+    return measurementId;
+  } catch (error: any) {
+    console.error('Detailed error saving distance measurement:', error, error.stack);
+    
+    if (isPermissionError(error)) {
+      console.warn('Firestore permission error. Falling back to localStorage:', error);
+      
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('User must be logged in to save distance measurement');
+      }
+      
+      const now = new Date().toISOString();
+      const data: DistanceMeasurementData = {
+        ...measurementData,
+        userId: user.uid,
+        createdAt: now,
+        updatedAt: now,
+      };
+      
+      // Save to localStorage instead
+      saveDistanceMeasurementToLocalStorage(data);
+      console.log("Saved to localStorage only due to Firestore error");
+      return measurementData.id;
+    } else {
+      console.error('Error saving distance measurement:', error);
+      throw error;
+    }
+  }
+};
+
+// Get all distance measurements for current user
+export const getUserDistanceMeasurements = async (): Promise<DistanceMeasurementData[]> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User must be logged in to get distance measurements');
+    }
+    
+    const measurementsCollection = collection(db, 'distance_measurements');
+    const q = query(measurementsCollection, where('userId', '==', user.uid));
+    const querySnapshot = await getDocs(q);
+    
+    const measurements: DistanceMeasurementData[] = [];
+    querySnapshot.forEach((doc) => {
+      measurements.push(doc.data() as DistanceMeasurementData);
+    });
+    
+    return measurements;
+  } catch (error: any) {
+    if (isPermissionError(error)) {
+      console.warn('Firestore permission error. Falling back to localStorage:', error);
+      return getDistanceMeasurementsFromLocalStorage();
+    } else {
+      console.error('Error getting user distance measurements:', error);
+      throw error;
+    }
+  }
+};
+
+// Delete distance measurement
+export const deleteDistanceMeasurement = async (measurementId: string): Promise<boolean> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User must be logged in to delete distance measurement');
+    }
+    
+    const measurementRef = doc(collection(db, 'distance_measurements'), measurementId);
+    // Verify ownership
+    const measurementDoc = await getDoc(measurementRef);
+    
+    if (measurementDoc.exists() && measurementDoc.data().userId === user.uid) {
+      await deleteDoc(measurementRef);
+      
+      // Also delete from localStorage
+      deleteDistanceMeasurementFromLocalStorage(measurementId);
+      
+      return true;
+    } else {
+      console.warn('Measurement not found or user does not have permission to delete');
+      return false;
+    }
+  } catch (error) {
+    if (isPermissionError(error)) {
+      console.warn('Firestore permission error. Falling back to localStorage:', error);
+      return deleteDistanceMeasurementFromLocalStorage(measurementId);
+    } else {
+      console.error('Error deleting distance measurement:', error);
+      throw error;
+    }
+  }
+};
+
+// Save distance measurement to localStorage
+const saveDistanceMeasurementToLocalStorage = (measurementData: DistanceMeasurementData): void => {
+  try {
+    const storageKey = 'userDistanceMeasurements';
+    
+    // Get existing stored measurements
+    const storedMeasurementsJSON = localStorage.getItem(storageKey);
+    const storedMeasurements: DistanceMeasurementData[] = storedMeasurementsJSON 
+      ? JSON.parse(storedMeasurementsJSON) 
+      : [];
+    
+    // Check if this measurement already exists
+    const existingIndex = storedMeasurements.findIndex(m => m.id === measurementData.id);
+    
+    if (existingIndex >= 0) {
+      // Update existing measurement
+      storedMeasurements[existingIndex] = measurementData;
+    } else {
+      // Add new measurement
+      storedMeasurements.push(measurementData);
+    }
+    
+    // Save back to localStorage
+    localStorage.setItem(storageKey, JSON.stringify(storedMeasurements));
+  } catch (error) {
+    console.error('Error saving distance measurement to localStorage:', error);
+  }
+};
+
+// Get distance measurements from localStorage
+const getDistanceMeasurementsFromLocalStorage = (): DistanceMeasurementData[] => {
+  try {
+    const storageKey = 'userDistanceMeasurements';
+    const storedMeasurementsJSON = localStorage.getItem(storageKey);
+    
+    if (!storedMeasurementsJSON) return [];
+    
+    return JSON.parse(storedMeasurementsJSON);
+  } catch (error) {
+    console.error('Error getting distance measurements from localStorage:', error);
+    return [];
+  }
+};
+
+// Delete distance measurement from localStorage
+const deleteDistanceMeasurementFromLocalStorage = (measurementId: string): boolean => {
+  try {
+    const storageKey = 'userDistanceMeasurements';
+    const storedMeasurementsJSON = localStorage.getItem(storageKey);
+    
+    if (!storedMeasurementsJSON) return false;
+    
+    const storedMeasurements: DistanceMeasurementData[] = JSON.parse(storedMeasurementsJSON);
+    const filteredMeasurements = storedMeasurements.filter(m => m.id !== measurementId);
+    
+    if (filteredMeasurements.length === storedMeasurements.length) {
+      // No measurement was removed
+      return false;
+    }
+    
+    localStorage.setItem(storageKey, JSON.stringify(filteredMeasurements));
+    return true;
+  } catch (error) {
+    console.error('Error deleting distance measurement from localStorage:', error);
     return false;
   }
 };

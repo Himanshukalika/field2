@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes, faUndo, faRedo } from '@fortawesome/free-solid-svg-icons';
+import { v4 as uuidv4 } from 'uuid';
+import { saveDistanceMeasurement } from '../../lib/firebase';
+import { useAuth } from '@/app/context/AuthContext';
 
 // Add the distance label styles
 const styles = {
@@ -48,6 +51,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   isActive,
   onExit,
 }) => {
+  const { user } = useAuth();
   const [isHovering, setIsHovering] = useState(false);
   const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
   const [undoStack, setUndoStack] = useState<google.maps.LatLngLiteral[][]>([]);
@@ -56,6 +60,10 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   const [canRedo, setCanRedo] = useState(false);
   const [pathClosed, setPathClosed] = useState(false);
   const [areaInSqMeters, setAreaInSqMeters] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [measurementName, setMeasurementName] = useState('');
+  const [showSaveNotification, setShowSaveNotification] = useState(false);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const edgeMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -1271,6 +1279,121 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     }
   }, [calculatePolygonArea]);
 
+  // Handle saving a distance measurement
+  const handleSaveMeasurement = async () => {
+    if (!user) {
+      alert('Please log in to save measurements');
+      return;
+    }
+
+    if (localPointsRef.current.length < 2) {
+      alert('Please add at least 2 points to save a measurement');
+      return;
+    }
+
+    // Show dialog to enter measurement name
+    setShowNameDialog(true);
+  };
+
+  // Function to actually save the measurement after name is provided
+  const saveCurrentMeasurement = async () => {
+    if (!user) {
+      console.error("Attempted to save without a user logged in");
+      return;
+    }
+    
+    try {
+      setIsSaving(true);
+      console.log("Starting save of measurement...");
+      
+      // Generate a unique ID if one doesn't exist
+      const measurementId = uuidv4();
+      console.log("Generated measurement ID:", measurementId);
+      
+      // Create measurement data object with null instead of undefined for area
+      const measurementData = {
+        id: measurementId,
+        points: localPointsRef.current,
+        distance: distance,
+        name: measurementName || `Measurement ${new Date().toLocaleDateString()}`,
+        isClosed: pathClosed,
+        area: pathClosed ? areaInSqMeters : null // Use null instead of undefined
+      };
+      
+      console.log("Prepared measurement data:", measurementData);
+      console.log("Points count:", localPointsRef.current.length);
+      console.log("Is path closed:", pathClosed);
+      console.log("Area value:", pathClosed ? areaInSqMeters : "null");
+      
+      // Save to Firestore
+      console.log("Calling saveDistanceMeasurement function...");
+      const savedId = await saveDistanceMeasurement(measurementData);
+      console.log("Save complete, received ID:", savedId);
+      
+      // Hide the name dialog
+      setShowNameDialog(false);
+      
+      // Show success notification
+      setShowSaveNotification(true);
+      setTimeout(() => {
+        setShowSaveNotification(false);
+      }, 3000);
+      
+      // Store the current points for the final polyline
+      const savedPoints = [...localPointsRef.current];
+      
+      // Use the existing clearMarkers function to remove all markers
+      clearMarkers();
+      
+      // Remove existing polyline
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+      
+      // Create a final non-interactive polyline that will persist
+      if (map && savedPoints.length > 1) {
+        new google.maps.Polyline({
+          path: savedPoints,
+          geodesic: true,
+          strokeColor: "#00AA00", 
+          strokeOpacity: 1.0,
+          strokeWeight: 3,
+          clickable: false,
+          map: map
+        });
+      }
+      
+      // Clear local points reference to prevent recreation of markers
+      localPointsRef.current = [];
+      
+      // Clear measurement points in state
+      setMeasurePoints([]);
+      
+      // Disable dragging functionality
+      draggingRef.current = false;
+      setActiveDragIndex(null);
+      
+      // Remove click listeners
+      if (clickListenerRef.current && map) {
+        google.maps.event.removeListener(clickListenerRef.current);
+        clickListenerRef.current = null;
+      }
+      
+      // Set measuring mode to false
+      setIsMeasuring(false);
+      
+      // Exit measurement mode
+      onExit();
+      
+    } catch (error) {
+      console.error('Error saving measurement:', error);
+      alert('Error saving measurement. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <>
       {/* Top panel with controls when measuring is active */}
@@ -1293,65 +1416,59 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
             
             <div className="flex-1 text-right">
               <button
-                onClick={() => {
-                  // Store the current points for the final polyline
-                  const savedPoints = [...localPointsRef.current];
-                  
-                  // Use the existing clearMarkers function to remove all markers
-                  clearMarkers();
-                  
-                  // Remove existing polyline
-                  if (polylineRef.current) {
-                    polylineRef.current.setMap(null);
-                    polylineRef.current = null;
-                  }
-                  
-                  // Create a final non-interactive polyline that will persist
-                  if (map && savedPoints.length > 1) {
-                    new google.maps.Polyline({
-                      path: savedPoints,
-                      geodesic: true,
-                      strokeColor: "#00AA00", 
-                      strokeOpacity: 1.0,
-                      strokeWeight: 3,
-                      clickable: false,
-                      map: map
-                    });
-
-                    // Also save the field/distance measurement when clicking save
-                    if (typeof window !== 'undefined' && window.handleSaveAllFields) {
-                      window.handleSaveAllFields();
-                    }
-                  }
-                  
-                  // Clear local points reference to prevent recreation of markers
-                  localPointsRef.current = [];
-                  
-                  // Clear measurement points in state
-                  setMeasurePoints([]);
-                  
-                  // Disable dragging functionality
-                  draggingRef.current = false;
-                  setActiveDragIndex(null);
-                  
-                  // Remove click listeners
-                  if (clickListenerRef.current && map) {
-                    google.maps.event.removeListener(clickListenerRef.current);
-                    clickListenerRef.current = null;
-                  }
-                  
-                  // Set measuring mode to false
-                  setIsMeasuring(false);
-                  
-                  // Exit measurement mode
-                  onExit();
-                }}
-                className="py-1 px-4 text-white hover:bg-white/20 rounded transition-colors"
+                onClick={handleSaveMeasurement}
+                disabled={localPointsRef.current.length < 2 || !user}
+                className={`py-1 px-4 text-white ${
+                  localPointsRef.current.length < 2 || !user
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "hover:bg-white/20 rounded transition-colors"
+                }`}
               >
                 <span className="font-medium">SAVE</span>
               </button>
-    </div>
+            </div>
           </div>
+        </div>
+      )}
+      
+      {/* Name input dialog */}
+      {showNameDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Save Measurement</h3>
+            <input
+              type="text"
+              value={measurementName}
+              onChange={(e) => setMeasurementName(e.target.value)}
+              placeholder="Enter a name for this measurement"
+              className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+              autoFocus
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowNameDialog(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveCurrentMeasurement}
+                disabled={isSaving}
+                className={`px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 ${
+                  isSaving ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Save success notification */}
+      {showSaveNotification && (
+        <div className="fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center">
+          <p className="text-sm">Measurement saved successfully</p>
         </div>
       )}
       
