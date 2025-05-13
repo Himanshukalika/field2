@@ -234,6 +234,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
       perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
     }
+    and 
 
     // Calculate area if we have at least 3 vertices
     let area = 0;
@@ -2547,6 +2548,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     polygon.set('infoWindow', infoWindow);
     infoWindow.open(map);
   }, [map]);
+
+  such that the area of the field
 
   // Update field labels when needed
   const updateFieldLabels = useCallback(() => {

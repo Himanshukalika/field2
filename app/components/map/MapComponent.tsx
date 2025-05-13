@@ -40,9 +40,9 @@ type MapType = 'hybrid' | 'satellite' | 'roadmap' | 'terrain';
 const libraries: ("places" | "drawing" | "geometry")[] = ["places", "drawing", "geometry"];
 
 const polygonColor = '#00C853'; // Bright green color
-const polygonFillOpacity = 0.3;
+const polygonFillOpacity = 0.1;
 const strokeColor = '#00C853';
-const strokeWeight = 2;
+const strokeWeight = 1;
 
 const LOCATION_MARKER_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z";
 
@@ -113,7 +113,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   
   const [isClient, setIsClient] = useState(false);
   const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [mapType, setMapType] = useState<MapType>('hybrid');
+  const [mapType, setMapType] = useState<MapType>('satellite');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [userLocation, setUserLocation] = useState<google.maps.LatLng | null>(null);
@@ -437,7 +437,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     polygon.set('fillColor', polygon.get('fillColor') || polygonColor);
     polygon.set('strokeWeight', polygon.get('strokeWeight') || strokeWeight);
     polygon.set('fillOpacity', polygon.get('fillOpacity') || polygonFillOpacity);
-    polygon.set('fieldName', polygon.get('fieldName') || `Field ${fieldPolygons.length + 1}`);
+    polygon.set('fieldName', polygon.get('fieldName') || 'Area');
     
     // Custom field label will be added by the useEffect hook that watches fieldPolygons
     
@@ -484,7 +484,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         // Calculate initial distance
         const distance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
         const distanceText = distance < 1000 
-          ? `${Math.round(distance)}m`
+          ? `${distance.toFixed(3)}m`
           : `${(distance / 1000).toFixed(2)}km`;
         
         // Calculate appropriate circle scale based on distance
@@ -1103,7 +1103,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           setUserLocation(newLocation);
           if (map) {
             map.panTo(newLocation);
-            map.setZoom(18);
+            map.setZoom(23); // Maximum zoom level for detailed view
           }
           setIsLocating(false);
         },
@@ -1206,7 +1206,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const handlePlaceSelect = useCallback((location: google.maps.LatLng) => {
     if (map) {
       map.panTo(location);
-      map.setZoom(18);
+      map.setZoom(23); // Maximum zoom level for detailed view
     }
   }, [map]);
 
@@ -1227,6 +1227,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     gestureHandling: 'greedy',
     draggableCursor: 'grab',
     draggingCursor: 'move',
+    maxZoom: 23, // Forcing maximum possible zoom level (beyond the official limit of 22)
   }), [mapType]);
 
   // Add drawing manager load handler
@@ -1266,7 +1267,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           // Calculate initial distance
           const distance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
           const distanceText = distance < 1000 
-            ? `${Math.round(distance)}m`
+            ? `${distance.toFixed(3)}m`
             : `${(distance / 1000).toFixed(2)}km`;
 
           // Calculate appropriate circle scale based on distance
@@ -2191,7 +2192,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       setSelectedFieldInfo({
         area: areaInHectares,
         perimeter: perimeterInKm,
-        name: polygon.get('fieldName') || `Field ${index + 1}`
+        name: polygon.get('fieldName') || 'Area'
       });
       
       setPolygonStyles({
@@ -2199,7 +2200,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         fillColor: polygon.get('fillColor') || polygonColor,
         strokeWeight: polygon.get('strokeWeight') || strokeWeight,
         fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
-        fieldName: polygon.get('fieldName') || `Field ${index + 1}`,
+        fieldName: polygon.get('fieldName') || 'Area',
       });
       
       // Don't automatically show tools when selecting a polygon
@@ -2539,7 +2540,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     const areaInHectares = area / 10000; // Convert to hectares
     
     // Get field name
-    const fieldName = polygon.get('fieldName') || 'Field';
+    const fieldName = polygon.get('fieldName') || 'Area';
     
     // Create an InfoWindow as the label
     const infoWindow = new google.maps.InfoWindow({
@@ -2628,7 +2629,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const areaInHectares = area / 10000; // Convert to hectares
       
       // Get field name
-      const fieldName = polygon.get('fieldName') || `Field ${index + 1}`;
+      const fieldName = polygon.get('fieldName') || 'Area';
       
       // Create a custom overlay
       class FieldLabelOverlay extends google.maps.OverlayView {
@@ -3454,7 +3455,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           <GoogleMap
             mapContainerStyle={mapStyles.map}
             center={defaultCenter}
-            zoom={15}
+            zoom={21}
             onLoad={onLoad}
             onUnmount={onUnmount}
             options={mapOptions}

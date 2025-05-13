@@ -719,7 +719,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       
       // Format distance for display
       if (segmentDistance < 1000) {
-        distanceText = `${Math.round(segmentDistance)}m`;
+        distanceText = `${segmentDistance.toFixed(3)}m`;
       } else {
         distanceText = `${(segmentDistance / 1000).toFixed(2)}km`;
       }
@@ -1489,7 +1489,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
               <div className="flex-1 text-center">
                 <span className="font-semibold text-white">
                   {distance < 1000 
-                    ? `${Math.round(distance)}m` 
+                    ? `${distance.toFixed(3)}m` 
                     : `${(distance / 1000).toFixed(2)}km`}
                 </span>
               </div>
