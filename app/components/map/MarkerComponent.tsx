@@ -73,35 +73,94 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
 
   // Load markers from Firebase on initial render
   useEffect(() => {
-    if (!map || !isActive || !window.google || !auth.currentUser) return;
+    if (!map || !isActive || !window.google) {
+      console.log('Map load conditions not met:', { mapExists: !!map, isActive, googleExists: !!window.google });
+      return;
+    }
     
     const loadMarkersFromFirebase = async () => {
+      console.log('Starting to load markers from Firebase');
       try {
-        const userId = auth.currentUser?.uid;
-        if (!userId) return;
+        // Check if user is logged in
+        if (!auth.currentUser) {
+          console.log('Waiting for authentication...');
+          
+          // Add auth state change listener to load markers once user is authenticated
+          const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (user) {
+              console.log('User authenticated, loading markers now');
+              unsubscribe(); // Unsubscribe to avoid multiple calls
+              loadMarkers(user.uid);
+            }
+          });
+          
+          return;
+        } else {
+          // User is already logged in
+          console.log('User already authenticated, loading markers directly');
+          await loadMarkers(auth.currentUser.uid);
+        }
+      } catch (error) {
+        console.error('Error in marker loading process:', error);
+        toast.error('Failed to load markers');
+      }
+    };
+    
+    // Function to actually load markers once we have the user ID
+    const loadMarkers = async (userId: string) => {
+      console.log('Loading markers for user ID:', userId);
+      
+      try {
+        if (!map || !window.google) {
+          console.error('Map not available when loading markers');
+          return;
+        }
         
         const markersQuery = query(
           collection(db, 'markers'), 
           where('userId', '==', userId)
         );
         
+        console.log('Executing Firestore query for markers...');
         const querySnapshot = await getDocs(markersQuery);
+        console.log(`Found ${querySnapshot.size} markers in Firebase`);
+        
+        if (querySnapshot.empty) {
+          console.log('No markers found for this user');
+          return;
+        }
         
         // Create markers from saved data
         const loadedMarkers: google.maps.Marker[] = [];
         const loadedLabels: Record<string, string> = {};
         
-        querySnapshot.forEach((doc) => {
+        querySnapshot.forEach((docSnapshot) => {
+          console.log('Processing marker document:', docSnapshot.id);
+          
           if (!map || !window.google) return;
           
-          const markerData = doc.data() as MarkerData & { userId: string, firebaseId: string };
+          const markerData = docSnapshot.data() as MarkerData & { userId: string };
+          console.log('Marker data:', JSON.stringify(markerData));
+          
           const defaultIcon = getDefaultMarkerIcon();
-          if (!defaultIcon) return;
+          if (!defaultIcon) {
+            console.error('Default icon not available');
+            return;
+          }
+          
+          // Create marker with correct position
+          if (!markerData.position || typeof markerData.position.lat !== 'number' || typeof markerData.position.lng !== 'number') {
+            console.error('Invalid marker position:', markerData.position);
+            return;
+          }
+          
+          console.log(`Creating marker at position: ${markerData.position.lat}, ${markerData.position.lng}`);
+          const markerPosition = new google.maps.LatLng(markerData.position.lat, markerData.position.lng);
           
           // Create marker
           const marker = new google.maps.Marker({
-            position: markerData.position,
-            map,
+            position: markerPosition,
+            map: map,
             draggable: true,
             icon: {
               ...defaultIcon,
@@ -110,9 +169,11 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
             zIndex: 1000
           });
           
+          console.log('Marker created and added to map');
+          
           // Store marker ID and Firebase document ID
           marker.set('markerId', markerData.id);
-          marker.set('firebaseId', doc.id);
+          marker.set('firebaseId', docSnapshot.id);
           
           // Add click listener
           marker.addListener('click', () => {
@@ -124,7 +185,17 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
           
           // Add dragend listener
           marker.addListener('dragend', () => {
-            updateMarkerInFirebase(marker);
+            // We'll save this marker to Firebase after dragging
+            const firebaseId = marker.get('firebaseId');
+            const position = marker.getPosition();
+            const markerId = marker.get('markerId');
+            if (position && firebaseId && markerId) {
+              // Use a simpler approach to avoid circular dependencies
+              updateDoc(doc(db, 'markers', firebaseId.toString()), {
+                position: { lat: position.lat(), lng: position.lng() },
+                updatedAt: serverTimestamp()
+              }).catch(err => console.error('Error updating marker position:', err));
+            }
           });
           
           // Store label
@@ -135,8 +206,30 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
           loadedMarkers.push(marker);
         });
         
-        setMarkers(loadedMarkers);
-        setMarkerLabels(loadedLabels);
+        console.log(`Successfully created ${loadedMarkers.length} markers on the map`);
+        
+        if (loadedMarkers.length > 0) {
+          setMarkers(loadedMarkers);
+          setMarkerLabels(loadedLabels);
+          
+          // Center the map on the first marker if needed
+          const firstMarker = loadedMarkers[0];
+          const position = firstMarker.getPosition();
+          if (position && map) {
+            console.log('Centering map on first marker');
+            // Optional: Center on first marker
+            // map.setCenter(position);
+          }
+          
+          // Force redraw of markers
+          loadedMarkers.forEach(marker => {
+            const position = marker.getPosition();
+            if (position) {
+              console.log('Refreshing marker position');
+              marker.setPosition(position);
+            }
+          });
+        }
       } catch (error) {
         console.error('Error loading markers from Firebase:', error);
         toast.error('Failed to load markers');
@@ -144,6 +237,11 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
     };
     
     loadMarkersFromFirebase();
+    
+    // Cleanup function
+    return () => {
+      console.log('Cleaning up marker loading effect');
+    };
   }, [map, isActive, getDefaultMarkerIcon]);
 
   // Function to save a marker to Firebase
@@ -611,111 +709,6 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
     };
   }, [isActive, map, addMarker]);
 
-  // Create and display labels for markers
-  useEffect(() => {
-    if (!map || !window.google) return;
-    
-    // Clean up previous labels first
-    const oldLabels = document.querySelectorAll('.marker-label');
-    oldLabels.forEach(label => {
-      label.parentElement?.removeChild(label);
-    });
-    
-    // Create label for each marker
-    markers.forEach(marker => {
-      const markerId = marker.get('markerId');
-      if (!markerId || !markerLabels[markerId]) return;
-      
-      const position = marker.getPosition();
-      if (!position) return;
-      
-      // Create a custom overlay for the label
-      class MarkerLabel extends google.maps.OverlayView {
-        private position: google.maps.LatLng;
-        private content: string;
-        private div: HTMLDivElement | null = null;
-        
-        constructor(position: google.maps.LatLng, content: string) {
-          super();
-          this.position = position;
-          this.content = content;
-          this.setMap(map);
-        }
-        
-        onAdd() {
-          // Create the label div
-          const div = document.createElement('div');
-          div.className = 'marker-label';
-          div.style.position = 'absolute';
-          div.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-          div.style.border = '1px solid #ccc';
-          div.style.borderRadius = '3px';
-          div.style.padding = '2px 5px';
-          div.style.fontSize = '12px';
-          div.style.fontWeight = 'bold';
-          div.style.color = '#333';
-          div.style.transform = 'translate(-50%, -150%)';
-          div.style.pointerEvents = 'none';
-          div.style.whiteSpace = 'nowrap';
-          div.style.zIndex = '1000';
-          div.style.textAlign = 'center';
-          div.textContent = this.content;
-          
-          this.div = div;
-          
-          // Add the div to the overlay pane
-          const panes = this.getPanes();
-          panes?.overlayMouseTarget.appendChild(div);
-        }
-        
-        draw() {
-          if (!this.div) return;
-          
-          // Position the div relative to the marker
-          const overlayProjection = this.getProjection();
-          const position = overlayProjection.fromLatLngToDivPixel(this.position);
-          
-          if (position) {
-            // Position above the marker
-            this.div.style.left = `${position.x}px`;
-            this.div.style.top = `${position.y - 30}px`; // 30px above the marker
-          }
-        }
-        
-        onRemove() {
-          if (this.div) {
-            this.div.parentNode?.removeChild(this.div);
-            this.div = null;
-          }
-        }
-      }
-      
-      new MarkerLabel(position, markerLabels[markerId]);
-      
-      // Update label position when marker is dragged
-      marker.addListener('drag', () => {
-        // Force a redraw of all labels
-        const event = new Event('resize');
-        window.dispatchEvent(event);
-      });
-    });
-    
-    // Add a resize listener to redraw labels when the map is panned or zoomed
-    const resizeListener = window.addEventListener('resize', () => {
-      // This will force a redraw of all overlays
-    });
-    
-    return () => {
-      window.removeEventListener('resize', resizeListener as unknown as EventListener);
-      
-      // Clean up labels
-      const labels = document.querySelectorAll('.marker-label');
-      labels.forEach(label => {
-        label.parentElement?.removeChild(label);
-      });
-    };
-  }, [map, markers, markerLabels]);
-
   // Function to update the selected marker position
   const updateMarkerPosition = useCallback(() => {
     if (!selectedMarker) {
@@ -748,6 +741,113 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
       };
     }
   }, [selectedMarker, updateMarkerPosition]);
+
+  // Create and display labels for markers directly on map
+  useEffect(() => {
+    if (!map || !window.google) return;
+    
+    // Clean up previous labels first
+    const oldLabels = document.querySelectorAll('.marker-name-label');
+    oldLabels.forEach(label => {
+      label.parentElement?.removeChild(label);
+    });
+    
+    // Create a custom overlay class for marker labels
+    class MarkerLabelOverlay extends google.maps.OverlayView {
+      private position: google.maps.LatLng;
+      private content: string;
+      private div: HTMLDivElement | null = null;
+      
+      constructor(position: google.maps.LatLng, content: string) {
+        super();
+        this.position = position;
+        this.content = content;
+        this.setMap(map);
+      }
+      
+      onAdd() {
+        // Create the label div
+        const div = document.createElement('div');
+        div.className = 'marker-name-label';
+        div.style.position = 'absolute';
+        div.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+        div.style.border = '1px solid #ccc';
+        div.style.borderRadius = '3px';
+        div.style.padding = '2px 5px';
+        div.style.fontSize = '12px';
+        div.style.fontWeight = 'bold';
+        div.style.color = '#333';
+        div.style.transform = 'translate(-50%, -130%)';
+        div.style.pointerEvents = 'none';
+        div.style.whiteSpace = 'nowrap';
+        div.style.zIndex = '1000';
+        div.style.textAlign = 'center';
+        div.textContent = this.content;
+        
+        this.div = div;
+        
+        // Add the div to the overlay pane
+        const panes = this.getPanes();
+        panes?.overlayLayer.appendChild(div);
+      }
+      
+      draw() {
+        if (!this.div) return;
+        
+        // Position the div relative to the marker
+        const overlayProjection = this.getProjection();
+        const position = overlayProjection.fromLatLngToDivPixel(this.position);
+        
+        if (position) {
+          // Position above the marker
+          this.div.style.left = `${position.x}px`;
+          this.div.style.top = `${position.y - 25}px`; // Position above the marker
+        }
+      }
+      
+      onRemove() {
+        if (this.div) {
+          this.div.parentNode?.removeChild(this.div);
+          this.div = null;
+        }
+      }
+    }
+    
+    // Create labels for each marker
+    markers.forEach(marker => {
+      const markerId = marker.get('markerId');
+      if (!markerId || !markerLabels[markerId]) return;
+      
+      const position = marker.getPosition();
+      if (!position) return;
+      
+      // Create and display label overlay
+      new MarkerLabelOverlay(position, markerLabels[markerId]);
+      
+      // Update label position when marker is dragged
+      marker.addListener('drag', () => {
+        // Force a redraw of all labels by triggering a resize event
+        const event = new Event('resize');
+        window.dispatchEvent(event);
+      });
+    });
+    
+    // Add resize listener to redraw labels when map pans/zooms
+    const resizeListener = window.addEventListener('resize', () => {
+      // This forces redraw of all overlays
+    });
+    
+    return () => {
+      // Clean up listener
+      window.removeEventListener('resize', resizeListener as unknown as EventListener);
+      
+      // Clean up labels
+      const labels = document.querySelectorAll('.marker-name-label');
+      labels.forEach(label => {
+        label.parentElement?.removeChild(label);
+      });
+    };
+  }, [map, markers, markerLabels]);
 
   if (!isActive) return null;
 

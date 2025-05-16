@@ -30,6 +30,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { uploadFieldImage, deleteFieldImage, getFieldImageUrl } from '@/app/lib/storage';
 import DistanceMeasurement from './DistanceMeasurement';
 import MarkerComponent from './MarkerComponent';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db, auth } from '../../lib/firebase';
+import { MarkerData } from './types';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -3730,6 +3733,104 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       }
     }
   }, [selectedMeasurement, measurementPolylines, measurementPolygons]);
+
+  // Load user's markers when the component loads
+  useEffect(() => {
+    // Only load markers if user is authenticated and the map is ready
+    if (user && map && !isLoading) {
+      const loadUserMarkers = async () => {
+        try {
+          console.log('Starting to load markers for user:', user.uid);
+          
+          // Query user's markers from Firestore
+          const markersQuery = query(
+            collection(db, 'markers'), 
+            where('userId', '==', user.uid)
+          );
+          
+          const querySnapshot = await getDocs(markersQuery);
+          console.log(`Found ${querySnapshot.size} markers in Firebase`);
+          
+          if (querySnapshot.empty) {
+            console.log('No markers found for this user');
+            return;
+          }
+
+          // Create Google Maps markers from the Firebase data
+          querySnapshot.forEach((docSnapshot) => {
+            if (!map || !window.google) return;
+            
+            const markerData = docSnapshot.data() as MarkerData & { userId: string };
+            console.log('Loading marker:', markerData);
+            
+            if (!markerData.position || typeof markerData.position.lat !== 'number' || typeof markerData.position.lng !== 'number') {
+              console.error('Invalid marker position:', markerData.position);
+              return;
+            }
+            
+            // Create the marker
+            const markerPosition = new google.maps.LatLng(markerData.position.lat, markerData.position.lng);
+            
+            // Create custom marker icon
+            const customIcon = {
+              path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+              fillColor: markerData.color || '#F44336',
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 2,
+              scale: 2,
+              anchor: new google.maps.Point(12, 22)
+            };
+            
+            const marker = new google.maps.Marker({
+              position: markerPosition,
+              map: map,
+              icon: customIcon,
+              draggable: false, // Not draggable in normal mode, only in marker mode
+              zIndex: 1000
+            });
+            
+            // Add label if exists
+            if (markerData.label) {
+              // Store the label data with the marker but don't create an InfoWindow
+              marker.set('labelText', markerData.label);
+            }
+            
+            // Store marker references for future use
+            marker.set('markerId', markerData.id);
+            marker.set('firebaseId', docSnapshot.id);
+            
+            console.log(`Created marker at position: ${markerData.position.lat}, ${markerData.position.lng}`);
+          });
+          
+          console.log('Finished loading markers');
+        } catch (error) {
+          console.error('Error loading markers:', error);
+        }
+      };
+      
+      loadUserMarkers();
+    }
+  }, [user, map, isLoading]);
+
+  const handleMarkerMode = () => {
+    // Exit drawing mode if active
+    if (isDrawingMode) {
+      handleCancelDrawing();
+    }
+    
+    // Exit distance measurement mode if active
+    if (measureDistanceMode) {
+      handleExitMeasureDistance();
+    }
+    
+    // Toggle marker mode
+    setMarkerMode(prev => !prev);
+    
+    // Hide other menus
+    setShowPolygonTools(false);
+    setShowDistanceTools(false);
+  };
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
