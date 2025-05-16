@@ -37,6 +37,8 @@ interface DistanceMeasurementProps {
   setIsMeasuring: React.Dispatch<React.SetStateAction<boolean>>;
   isActive: boolean;
   onExit: () => void;
+  selectedMeasurement?: any;
+  onClearSelectedMeasurement?: () => void;
 }
 
 const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
@@ -50,6 +52,8 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   setIsMeasuring,
   isActive,
   onExit,
+  selectedMeasurement,
+  onClearSelectedMeasurement
 }) => {
   const { user } = useAuth();
   const [isHovering, setIsHovering] = useState(false);
@@ -740,12 +744,12 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
           // Create container div
           this.div = document.createElement('div');
           this.div.style.position = 'absolute';
-          this.div.style.color = 'white';
-          this.div.style.fontSize = '12px'; // Reduced to match field labels
+          this.div.style.backgroundColor = 'transparent';
+          this.div.style.color = 'black';
+          this.div.style.padding = '0';
+          this.div.style.fontSize = '12px';
           this.div.style.fontWeight = 'bold';
-          this.div.style.textShadow = 
-              '1px 0 1px #000, -1px 0 1px #000, 0 1px 1px #000, 0 -1px 1px #000, ' + 
-              '1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000';
+          this.div.style.textShadow = '0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white';
           this.div.style.zIndex = '1000';
           this.div.style.userSelect = 'none';
           this.div.style.whiteSpace = 'nowrap';
@@ -1247,16 +1251,16 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   }, [onUpdate, setMeasurePoints, saveToUndoStack, createMeasureMarker, calculateTotalDistance, 
       updateDistanceLabels, updateEdgeMarkers, ensurePolyline, setDistance, calculatePolygonArea]);
 
-  // Format area for display
-  const formatArea = useCallback((areaSqM: number): string => {
-    if (areaSqM >= 10000) {
-      // Convert to hectares if area is large
-      return `${(areaSqM / 10000).toFixed(2)} ha`;
+  // Helper function to format area for display
+  const formatArea = (areaSqMeters: number) => {
+    if (areaSqMeters >= 10000) {
+      // Convert to hectares if area is large enough
+      return `${(areaSqMeters / 10000).toFixed(2)} ha`;
     } else {
-      // Otherwise show in square meters
-      return `${Math.round(areaSqM)} m²`;
+      // Keep as square meters for smaller areas
+      return `${areaSqMeters.toFixed(2)} m²`;
     }
-  }, []);
+  };
 
   // Check if path is closed and update area state
   const checkPathClosedAndUpdateArea = useCallback((points: google.maps.LatLngLiteral[]) => {
@@ -1353,7 +1357,7 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
       
       // Create a final non-interactive polyline that will persist
       if (map && savedPoints.length > 1) {
-        new google.maps.Polyline({
+        const savedPolyline = new google.maps.Polyline({
           path: savedPoints,
           geodesic: true,
           strokeColor: "#00AA00", 
@@ -1362,6 +1366,97 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
           clickable: false,
           map: map
         });
+        
+        // Find an appropriate location for the label (middle of the path)
+        let centerPointIdx = Math.floor(savedPoints.length / 2);
+        let centerPoint;
+        
+        if (savedPoints.length % 2 !== 0) {
+          centerPoint = savedPoints[centerPointIdx];
+        } else {
+          const p1 = savedPoints[centerPointIdx - 1];
+          const p2 = savedPoints[centerPointIdx];
+          
+          try {
+            const p1LatLng = new google.maps.LatLng(p1.lat, p1.lng);
+            const p2LatLng = new google.maps.LatLng(p2.lat, p2.lng);
+            const heading = google.maps.geometry.spherical.computeHeading(p1LatLng, p2LatLng);
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(p1LatLng, p2LatLng);
+            const midpointLatLng = google.maps.geometry.spherical.computeOffset(p1LatLng, distance/2, heading);
+            
+            centerPoint = {
+              lat: midpointLatLng.lat(),
+              lng: midpointLatLng.lng()
+            };
+          } catch (error) {
+            // Fall back to simple averaging
+            centerPoint = {
+              lat: (p1.lat + p2.lat) / 2,
+              lng: (p1.lng + p2.lng) / 2
+            };
+          }
+        }
+        
+        // Create and add a label overlay for the measurement name
+        class NameLabelOverlay extends google.maps.OverlayView {
+          private position: google.maps.LatLngLiteral;
+          private content: string;
+          private div: HTMLDivElement | null = null;
+          
+          constructor(position: google.maps.LatLngLiteral, content: string) {
+            super();
+            this.position = position;
+            this.content = content;
+          }
+          
+          onAdd() {
+            this.div = document.createElement('div');
+            this.div.style.position = 'absolute';
+            this.div.style.backgroundColor = 'transparent';
+            this.div.style.color = 'black';
+            this.div.style.padding = '0';
+            this.div.style.fontSize = '12px';
+            this.div.style.fontWeight = 'bold';
+            this.div.style.textShadow = '0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white';
+            this.div.style.zIndex = '1000';
+            this.div.style.userSelect = 'none';
+            this.div.style.whiteSpace = 'nowrap';
+            this.div.style.transform = 'translate(-50%, -50%)';
+            this.div.style.fontFamily = 'Arial, sans-serif';
+            this.div.style.textAlign = 'center';
+            this.div.textContent = this.content;
+            
+            const panes = this.getPanes();
+            panes?.overlayLayer.appendChild(this.div);
+          }
+          
+          draw() {
+            const overlayProjection = this.getProjection();
+            if (!overlayProjection || !this.div) return;
+            
+            const position = overlayProjection.fromLatLngToDivPixel(
+              new google.maps.LatLng(this.position.lat, this.position.lng)
+            );
+            
+            if (position) {
+              this.div.style.left = position.x + 'px';
+              this.div.style.top = position.y + 'px';
+            }
+          }
+          
+          onRemove() {
+            if (this.div) {
+              this.div.parentNode?.removeChild(this.div);
+              this.div = null;
+            }
+          }
+        }
+        
+        // Add the name label to the map
+        if (centerPoint) {
+          const nameLabel = new NameLabelOverlay(centerPoint, measurementData.name);
+          nameLabel.setMap(map);
+        }
       }
       
       // Clear local points reference to prevent recreation of markers
@@ -1426,9 +1521,72 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
               >
                 <span className="font-medium">SAVE</span>
               </button>
-            </div>
+    </div>
           </div>
         </div>
+      )}
+      
+      {/* Add info panel for selected measurement */}
+      {!isMeasuring && selectedMeasurement && (
+        <>
+          <div className="absolute top-0 left-0 right-0 bg-yellow-500 shadow-lg z-50">
+            <div className="w-full flex justify-between items-center p-2">
+              <button
+                onClick={() => {
+                  // Call the parent function to clear selected measurement
+                  if (onClearSelectedMeasurement) {
+                    onClearSelectedMeasurement();
+                  }
+                }}
+                className="p-1 text-white hover:bg-white/20 rounded transition-colors"
+                title="Close measurement details"
+              >
+                <FontAwesomeIcon icon={faTimes} className="text-xl" />
+              </button>
+              
+              {/* Display measurement name in center */}
+              <div className="flex-1 text-center">
+                <span className="font-medium text-white">{selectedMeasurement.name || 'Unnamed Measurement'}</span>
+              </div>
+              
+              <div className="flex-1"></div>
+            </div>
+          </div>
+          
+          {/* Black transparent panel showing selected measurement stats */}
+          <div className="absolute top-12 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+            <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+              {(selectedMeasurement.area !== undefined && selectedMeasurement.area !== null && selectedMeasurement.area > 0) && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Area:</span>
+                  <span className="text-green-400 font-medium">
+                    {selectedMeasurement.area < 10000 
+                      ? `${selectedMeasurement.area.toFixed(2)}m²` 
+                      : `${(selectedMeasurement.area / 10000).toFixed(2)}ha`}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-100">Distance:</span>
+                <div className="flex-1 text-center">
+                  <span className="font-semibold text-white">
+                    {(selectedMeasurement.distance !== undefined && selectedMeasurement.distance !== null)
+                      ? (selectedMeasurement.distance < 1000 
+                        ? `${selectedMeasurement.distance.toFixed(3)}m` 
+                        : `${(selectedMeasurement.distance / 1000).toFixed(2)}km`)
+                      : "N/A"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-100">Vertices:</span>
+                <span className="text-purple-400 font-medium">
+                  {selectedMeasurement.points ? selectedMeasurement.points.length : 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        </>
       )}
       
       {/* Name input dialog */}

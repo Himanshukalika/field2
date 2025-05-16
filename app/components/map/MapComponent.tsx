@@ -29,6 +29,7 @@ import { polygonToFieldData, fieldDataToPolygon, centerMapOnField } from '../../
 import { v4 as uuidv4 } from 'uuid';
 import { uploadFieldImage, deleteFieldImage, getFieldImageUrl } from '@/app/lib/storage';
 import DistanceMeasurement from './DistanceMeasurement';
+import MarkerComponent from './MarkerComponent';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -173,12 +174,29 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const [measureDistanceMode, setMeasureDistanceMode] = useState<boolean>(false);
   const [measurePoints, setMeasurePoints] = useState<google.maps.LatLngLiteral[]>([]);
   const [distance, setDistance] = useState<number>(0);
+  const [markerMode, setMarkerMode] = useState<boolean>(false);
 
   // Add a state to store loaded distance measurements
   const [loadedDistanceMeasurements, setLoadedDistanceMeasurements] = useState<any[]>([]);
 
   // Add a state to store the currently selected measurement
   const [selectedMeasurement, setSelectedMeasurement] = useState<any>(null);
+  
+  // Add state for distance measurement tools menu
+  const [showDistanceTools, setShowDistanceTools] = useState(false);
+  
+  // Add states for distance measurement styles
+  const [distanceStyles, setDistanceStyles] = useState({
+    strokeColor: "#00AA00",
+    fillColor: "#00AA00",
+    strokeWeight: 3,
+    fillOpacity: 0.1,
+    name: ''
+  });
+  
+  // Add states to store references to measurement polylines and polygons
+  const [measurementPolylines, setMeasurementPolylines] = useState<Record<string, google.maps.Polyline>>({});
+  const [measurementPolygons, setMeasurementPolygons] = useState<Record<string, google.maps.Polygon>>({});
 
   // ... existing code, add after undoStack initialization ...
   
@@ -1187,20 +1205,23 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       }
       setMeasureDistanceMode(true);
     } else if (option === 'marker') {
-      // Add a marker at the center of the current map view
-      if (map) {
-        const center = map.getCenter();
-        if (center) {
-          // Create a new marker at the center position
-          new google.maps.Marker({
-            position: center,
-            map: map,
-            draggable: true
-          });
-        }
+      // Activate marker mode
+      if (isDrawingMode) {
+        // Exit drawing mode if active
+        setIsDrawingMode(false);
       }
+      if (measureDistanceMode) {
+        // Exit measure distance mode if active
+        setMeasureDistanceMode(false);
+      }
+      setMarkerMode(true);
     }
-  }, [user, login, map, isDrawingMode]);
+  }, [user, login, map, isDrawingMode, measureDistanceMode]);
+
+  // Function to exit marker mode
+  const handleExitMarkerMode = useCallback(() => {
+    setMarkerMode(false);
+  }, []);
 
   // Handle place selection from search
   const handlePlaceSelect = useCallback((location: google.maps.LatLng) => {
@@ -3288,6 +3309,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           if (measurements && measurements.length > 0) {
             setLoadedDistanceMeasurements(measurements);
             
+            // Create arrays to store measurement polylines and polygons for reference
+            const measurementPolylines: Record<string, google.maps.Polyline> = {};
+            const measurementPolygons: Record<string, google.maps.Polygon> = {};
+            
             // Display each measurement as a polyline on the map
             measurements.forEach(measurement => {
               if (measurement.points && measurement.points.length > 1) {
@@ -3298,14 +3323,176 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   strokeColor: "#00AA00", 
                   strokeOpacity: 1.0,
                   strokeWeight: 3,
-                  clickable: true,
+                  clickable: true, // Make clickable so it can be selected
                   map: map
                 });
                 
-                // Add click handler to the polyline
-                measurementLine.addListener('click', () => {
-                  setSelectedMeasurement(measurement);
+                // Store the polyline reference for this measurement
+                measurementPolylines[measurement.id] = measurementLine;
+                
+                // Store initial styling options on the polyline for reference
+                measurementLine.set('initialOptions', {
+                  strokeColor: "#00AA00",
+                  strokeWeight: 3,
+                  strokeOpacity: 1.0
                 });
+                
+                // Add click handler to select this measurement
+                measurementLine.addListener('click', () => {
+                  // Highlight this measurement by increasing stroke weight
+                  measurementLine.setOptions({
+                    strokeWeight: 5,
+                    strokeColor: "#00CC00"
+                  });
+                  
+                  // Set as selected measurement
+                  setSelectedMeasurement(measurement);
+                  
+                  // Update distance styles based on actual polyline properties
+                  const initialPolylineOptions = measurementLine.get('initialOptions') || {
+                    strokeColor: "#00AA00",
+                    strokeWeight: 3,
+                    strokeOpacity: 1.0
+                  };
+                  
+                  const initialPolygonOptions = measurement.isClosed && measurementPolygons[measurement.id] 
+                    ? (measurementPolygons[measurement.id].get('initialOptions') || {
+                        strokeColor: "#00AA00",
+                        strokeWeight: 2,
+                        fillColor: "#00AA00",
+                        fillOpacity: 0.1,
+                        strokeOpacity: 0.8
+                      })
+                    : null;
+                  
+                  setDistanceStyles({
+                    strokeColor: initialPolylineOptions.strokeColor,
+                    fillColor: initialPolygonOptions ? initialPolygonOptions.fillColor : "#00AA00",
+                    strokeWeight: initialPolylineOptions.strokeWeight,
+                    fillOpacity: initialPolygonOptions ? initialPolygonOptions.fillOpacity : 0.1,
+                    name: measurement.name || ''
+                  });
+                  
+                  // Reset styling of all other measurement polylines
+                  Object.entries(measurementPolylines).forEach(([id, polyline]) => {
+                    if (id !== measurement.id) {
+                      polyline.setOptions({
+                        strokeWeight: 3,
+                        strokeColor: "#00AA00"
+                      });
+                    }
+                  });
+                  
+                  // Reset styling of all other measurement polygons
+                  Object.entries(measurementPolygons).forEach(([id, polygon]) => {
+                    if (id !== measurement.id) {
+                      polygon.setOptions({
+                        strokeWeight: 2,
+                        strokeColor: "#00AA00",
+                        fillOpacity: 0.1
+                      });
+                    }
+                  });
+                });
+                
+                // Find an appropriate point for the name label (middle of polyline)
+                const points = measurement.points;
+                let centerPointIdx = Math.floor(points.length / 2);
+                let centerPoint;
+                
+                // If odd number of points, use the middle point
+                if (points.length % 2 !== 0) {
+                  centerPoint = points[centerPointIdx];
+                } else {
+                  // If even number of points, calculate midpoint between the two middle points
+                  const p1 = points[centerPointIdx - 1];
+                  const p2 = points[centerPointIdx];
+                  
+                  try {
+                    // Try to use geometry library for precise midpoint calculation
+                    const p1LatLng = new google.maps.LatLng(p1.lat, p1.lng);
+                    const p2LatLng = new google.maps.LatLng(p2.lat, p2.lng);
+                    const heading = google.maps.geometry.spherical.computeHeading(p1LatLng, p2LatLng);
+                    const distance = google.maps.geometry.spherical.computeDistanceBetween(p1LatLng, p2LatLng);
+                    const midpointLatLng = google.maps.geometry.spherical.computeOffset(p1LatLng, distance/2, heading);
+                    
+                    centerPoint = {
+                      lat: midpointLatLng.lat(),
+                      lng: midpointLatLng.lng()
+                    };
+                  } catch (error) {
+                    // Fallback to simple averaging if geometry library isn't available
+                    centerPoint = {
+                      lat: (p1.lat + p2.lat) / 2,
+                      lng: (p1.lng + p2.lng) / 2
+                    };
+                  }
+                }
+                
+                // Create custom overlay class for the measurement name label
+                class MeasurementNameOverlay extends google.maps.OverlayView {
+                  private position: google.maps.LatLngLiteral;
+                  private content: string;
+                  private div: HTMLDivElement | null = null;
+                  
+                  constructor(position: google.maps.LatLngLiteral, content: string) {
+                    super();
+                    this.position = position;
+                    this.content = content;
+                  }
+                  
+                  onAdd() {
+                    // Create container div
+                    this.div = document.createElement('div');
+                    this.div.style.position = 'absolute';
+                    this.div.style.backgroundColor = 'transparent';
+                    this.div.style.color = 'black';
+                    this.div.style.padding = '0';
+                    this.div.style.fontSize = '12px';
+                    this.div.style.fontWeight = 'bold';
+                    this.div.style.textShadow = '0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white, 0px 0px 2px white';
+                    this.div.style.zIndex = '1000';
+                    this.div.style.userSelect = 'none';
+                    this.div.style.whiteSpace = 'nowrap';
+                    this.div.style.transform = 'translate(-50%, -50%)';
+                    this.div.style.fontFamily = 'Arial, sans-serif';
+                    this.div.style.textAlign = 'center';
+                    this.div.textContent = this.content;
+                    
+                    const panes = this.getPanes();
+                    panes?.overlayLayer.appendChild(this.div);
+                  }
+                  
+                  draw() {
+                    const overlayProjection = this.getProjection();
+                    if (!overlayProjection || !this.div) return;
+                    
+                    const position = overlayProjection.fromLatLngToDivPixel(
+                      new google.maps.LatLng(this.position.lat, this.position.lng)
+                    );
+                    
+                    if (position) {
+                      this.div.style.left = position.x + 'px';
+                      this.div.style.top = position.y + 'px';
+                    }
+                  }
+                  
+                  onRemove() {
+                    if (this.div) {
+                      this.div.parentNode?.removeChild(this.div);
+                      this.div = null;
+                    }
+                  }
+                }
+                
+                // Display the measurement name directly on the map
+                if (centerPoint && measurement.name) {
+                  const nameLabel = new MeasurementNameOverlay(
+                    centerPoint,
+                    measurement.name
+                  );
+                  nameLabel.setMap(map);
+                }
                 
                 // If the measurement is closed and has an area, add a polygon fill
                 if (measurement.isClosed && measurement.area) {
@@ -3316,42 +3503,89 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     strokeWeight: 2,
                     fillColor: "#00AA00",
                     fillOpacity: 0.1,
-                    clickable: true,
+                    clickable: true, // Make clickable so it can be selected
                     map: map
                   });
                   
-                  // Add click handler to the polygon too
+                  // Store the polygon reference for this measurement
+                  measurementPolygons[measurement.id] = polygon;
+                  
+                  // Store initial styling options on the polygon for reference
+                  polygon.set('initialOptions', {
+                    strokeColor: "#00AA00",
+                    strokeWeight: 2,
+                    fillColor: "#00AA00",
+                    fillOpacity: 0.1,
+                    strokeOpacity: 0.8
+                  });
+                  
+                  // Add click handler to select this measurement
                   polygon.addListener('click', () => {
+                    // Highlight this polygon
+                    polygon.setOptions({
+                      strokeWeight: 4,
+                      strokeColor: "#00CC00",
+                      fillOpacity: 0.2
+                    });
+                    
+                    // Set as selected measurement
                     setSelectedMeasurement(measurement);
+                    
+                    // Update distance styles
+                    const initialPolygonOptions = polygon.get('initialOptions') || {
+                      strokeColor: "#00AA00",
+                      strokeWeight: 2,
+                      fillColor: "#00AA00",
+                      fillOpacity: 0.1,
+                      strokeOpacity: 0.8
+                    };
+                    
+                    setDistanceStyles({
+                      strokeColor: initialPolygonOptions.strokeColor,
+                      fillColor: initialPolygonOptions.fillColor,
+                      strokeWeight: initialPolygonOptions.strokeWeight,
+                      fillOpacity: initialPolygonOptions.fillOpacity,
+                      name: measurement.name || ''
+                    });
+                    
+                    // Highlight the corresponding polyline
+                    const polyline = measurementPolylines[measurement.id];
+                    if (polyline) {
+                      polyline.setOptions({
+                        strokeWeight: 5,
+                        strokeColor: "#00CC00"
+                      });
+                    }
+                    
+                    // Reset styling of all other measurement polylines
+                    Object.entries(measurementPolylines).forEach(([id, polyline]) => {
+                      if (id !== measurement.id) {
+                        polyline.setOptions({
+                          strokeWeight: 3,
+                          strokeColor: "#00AA00"
+                        });
+                      }
+                    });
+                    
+                    // Reset styling of all other measurement polygons
+                    Object.entries(measurementPolygons).forEach(([id, otherPolygon]) => {
+                      if (id !== measurement.id) {
+                        otherPolygon.setOptions({
+                          strokeWeight: 2,
+                          strokeColor: "#00AA00",
+                          fillOpacity: 0.1
+                        });
+                      }
+                    });
                   });
-                }
-                
-                // Add a label at the midpoint of the measurement
-                if (measurement.points.length > 0) {
-                  // Find a good position for the label (middle point)
-                  const midPointIndex = Math.floor(measurement.points.length / 2);
-                  const midPoint = measurement.points[midPointIndex];
-                  
-                  // Create a simple label using an InfoWindow
-                  const contentString = `
-                    <div class="px-2 py-1 text-sm">
-                      <div class="font-semibold">${measurement.name || 'Measurement'}</div>
-                      <div>${(measurement.distance / 1000).toFixed(2)} km</div>
-                      ${measurement.area ? `<div>${(measurement.area / 10000).toFixed(2)} ha</div>` : ''}
-                    </div>
-                  `;
-                  
-                  const infoWindow = new google.maps.InfoWindow({
-                    content: contentString,
-                    position: midPoint,
-                    disableAutoPan: true
-                  });
-                  
-                  // Open the info window
-                  infoWindow.open(map);
                 }
               }
             });
+            
+            // Store the references to measurement polylines and polygons globally
+            // so they can be accessed for selection/deselection
+            setMeasurementPolylines(measurementPolylines);
+            setMeasurementPolygons(measurementPolygons);
           }
         } catch (error) {
           console.error('Error loading distance measurements:', error);
@@ -3386,6 +3620,116 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       }
     }
   }, [user]);
+
+  // Add handlers for distance measurement styling
+  const handleChangeDistanceStrokeColor = useCallback((color: string) => {
+    if (selectedMeasurement && measurementPolylines[selectedMeasurement.id]) {
+      try {
+        // Update the polyline
+        const polyline = measurementPolylines[selectedMeasurement.id];
+        polyline.setOptions({ 
+          strokeColor: color,
+          strokeOpacity: 1.0 
+        });
+        
+        // Update the polygon if it exists
+        if (measurementPolygons[selectedMeasurement.id]) {
+          const polygon = measurementPolygons[selectedMeasurement.id];
+          polygon.setOptions({ 
+            strokeColor: color,
+            strokeOpacity: 0.8
+          });
+        }
+        
+        // Update the styles state
+        setDistanceStyles(prev => ({ ...prev, strokeColor: color }));
+      } catch (error) {
+        console.error("Error updating stroke color:", error);
+      }
+    }
+  }, [selectedMeasurement, measurementPolylines, measurementPolygons]);
+  
+  
+  const handleChangeDistanceFillOpacity = useCallback((opacity: number) => {
+    if (selectedMeasurement && measurementPolygons[selectedMeasurement.id]) {
+      // Update the polygon
+      const polygon = measurementPolygons[selectedMeasurement.id];
+      polygon.setOptions({ fillOpacity: opacity });
+      
+      // Update the styles state
+      setDistanceStyles(prev => ({ ...prev, fillOpacity: opacity }));
+    }
+  }, [selectedMeasurement, measurementPolygons]);
+  
+  const handleChangeDistanceName = useCallback((name: string) => {
+    if (selectedMeasurement) {
+      // Update the name in the state
+      setDistanceStyles(prev => ({ ...prev, name: name }));
+      
+      // We would typically update this in the database, but for now just update local state
+      setSelectedMeasurement((prev: any) => ({ ...prev, name: name }));
+      
+      // Here you would normally also update the name in the database
+      // saveDistanceMeasurementName(selectedMeasurement.id, name);
+    }
+  }, [selectedMeasurement]);
+
+  // Add a function to handle measurement selection clearing
+  const clearSelectedMeasurement = useCallback(() => {
+    setSelectedMeasurement(null);
+  }, []);
+  
+  // Add map click listener to deselect measurement
+  useEffect(() => {
+    if (!map) return;
+    
+    // Create a map click listener to deselect the measurement
+    const clickListener = map.addListener('click', () => {
+      if (selectedMeasurement && !measureDistanceMode) {
+        clearSelectedMeasurement();
+        
+        // Reset styling on polylines using the component state
+        if (measurementPolylines && Object.keys(measurementPolylines).length > 0) {
+          Object.values(measurementPolylines).forEach(polyline => {
+            polyline.setOptions({
+              strokeWeight: 3,
+              strokeColor: "#00AA00"
+            });
+          });
+        }
+        
+        // Reset styling on polygons using the component state
+        if (measurementPolygons && Object.keys(measurementPolygons).length > 0) {
+          Object.values(measurementPolygons).forEach(polygon => {
+            polygon.setOptions({
+              strokeWeight: 2,
+              strokeColor: "#00AA00",
+              fillOpacity: 0.1
+            });
+          });
+        }
+      }
+    });
+    
+    // Clean up the listener when the component unmounts
+    return () => {
+      google.maps.event.removeListener(clickListener);
+    };
+  }, [map, selectedMeasurement, measureDistanceMode, clearSelectedMeasurement, measurementPolylines, measurementPolygons]);
+
+  // Add function to toggle distance measurement editable state
+  const handleToggleDistanceEditable = useCallback(() => {
+    if (selectedMeasurement && measurementPolylines[selectedMeasurement.id]) {
+      const polyline = measurementPolylines[selectedMeasurement.id];
+      const currentEditable = polyline.getEditable();
+      polyline.setEditable(!currentEditable);
+      
+      if (measurementPolygons[selectedMeasurement.id]) {
+        const polygon = measurementPolygons[selectedMeasurement.id];
+        polygon.setEditable(!currentEditable);
+      }
+    }
+  }, [selectedMeasurement, measurementPolylines, measurementPolygons]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
@@ -3548,6 +3892,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             </div>
           )}
 
+          {/* Add toggle button for distance measurement tools */}
+          {selectedMeasurement && !selectedPolygonIndex && (
+            <div className="absolute bottom-20 right-4 z-10">
+              <button
+                onClick={() => setShowDistanceTools(prev => !prev)}
+                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
+                title={showDistanceTools ? "Close Distance Tools" : "Open Distance Tools"}
+              >
+                <FontAwesomeIcon 
+                  icon={showDistanceTools ? faTimes : faCog} 
+                  className="text-xl text-green-700" 
+                />
+              </button>
+            </div>
+          )}
+
           {/* Add the PolygonToolsMenu component */}
           <PolygonToolsMenu 
             isOpen={showPolygonTools}
@@ -3574,6 +3934,108 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               : 0}
             selectedPolygonIndex={selectedPolygonIndex}
           />
+          
+          {/* Add PolygonToolsMenu for distance measurements */}
+          <PolygonToolsMenu 
+            isOpen={showDistanceTools}
+            onClose={() => setShowDistanceTools(false)}
+            onChangeStrokeColor={(color) => {
+              // Make a direct update with explicit options
+              if (selectedMeasurement && measurementPolylines[selectedMeasurement.id]) {
+                measurementPolylines[selectedMeasurement.id].setOptions({
+                  strokeColor: color,
+                  strokeOpacity: 1.0
+                });
+                
+                // Update polygon if it exists
+                if (measurementPolygons[selectedMeasurement.id]) {
+                  measurementPolygons[selectedMeasurement.id].setOptions({
+                    strokeColor: color,
+                    strokeOpacity: 0.8
+                  });
+                }
+                
+                // Update local state
+                setDistanceStyles({...distanceStyles, strokeColor: color});
+              }
+            }}
+            onChangeFillColor={(color) => {
+              // Make a direct update with explicit options
+              if (selectedMeasurement && measurementPolygons[selectedMeasurement.id]) {
+                measurementPolygons[selectedMeasurement.id].setOptions({
+                  fillColor: color,
+                  fillOpacity: distanceStyles.fillOpacity || 0.1
+                });
+                
+                // Update local state
+                setDistanceStyles({...distanceStyles, fillColor: color});
+              }
+            }}
+            onChangeStrokeWeight={(weight) => {
+              // Make a direct update with explicit options
+              if (selectedMeasurement && measurementPolylines[selectedMeasurement.id]) {
+                measurementPolylines[selectedMeasurement.id].setOptions({
+                  strokeWeight: weight
+                });
+                
+                // Update polygon if it exists
+                if (measurementPolygons[selectedMeasurement.id]) {
+                  measurementPolygons[selectedMeasurement.id].setOptions({
+                    strokeWeight: weight
+                  });
+                }
+                
+                // Update local state
+                setDistanceStyles({...distanceStyles, strokeWeight: weight});
+              }
+            }}
+            onChangeFillOpacity={(opacity) => {
+              // Make a direct update with explicit options
+              if (selectedMeasurement && measurementPolygons[selectedMeasurement.id]) {
+                measurementPolygons[selectedMeasurement.id].setOptions({
+                  fillOpacity: opacity
+                });
+                
+                // Update local state
+                setDistanceStyles({...distanceStyles, fillOpacity: opacity});
+              }
+            }}
+            onChangeName={(name) => {
+              if (selectedMeasurement) {
+                // Update local state
+                setDistanceStyles({...distanceStyles, name: name});
+                setSelectedMeasurement({...selectedMeasurement, name: name});
+              }
+            }}
+            onDelete={() => selectedMeasurement && handleDeleteMeasurement(selectedMeasurement.id)}
+            onAddImage={() => {}} // Not applicable for distance measurements
+            onDeleteImage={() => {}} // Not applicable for distance measurements
+            onSetMainImage={() => {}} // Not applicable for distance measurements
+            strokeColor={distanceStyles.strokeColor}
+            fillColor={distanceStyles.fillColor}
+            strokeWeight={distanceStyles.strokeWeight}
+            fillOpacity={distanceStyles.fillOpacity}
+            fieldName={selectedMeasurement ? (selectedMeasurement.name || distanceStyles.name) : ''}
+            fieldImages={[]} // No images for distance measurements
+            mainImageIndex={0}
+            selectedPolygonIndex={selectedMeasurement ? 0 : null} // Just use 0 as a placeholder when selected
+          />
+          
+          {/* Add editable toggle button for distance measurements */}
+          {showDistanceTools && selectedMeasurement && (
+            <div className="absolute bottom-28 right-20 z-20">
+              <button
+                onClick={handleToggleDistanceEditable}
+                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-blue-500"
+                title="Toggle Editable State"
+              >
+                <FontAwesomeIcon 
+                  icon={faEdit} 
+                  className="text-xl text-blue-700" 
+                />
+              </button>
+            </div>
+          )}
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
@@ -3606,16 +4068,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   
                   <button
                     onClick={handleRedo}
-                    disabled={redoStack.length === 0}
+                disabled={redoStack.length === 0}
                     className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
                       redoStack.length > 0
                         ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
-                    title="Redo"
-                  >
+                }`}
+                title="Redo"
+              >
                     <FontAwesomeIcon icon={faRedo} />
-                  </button>
+              </button>
                 </div>
                 
                 {/* Right side: Save & Finish buttons */}
@@ -3729,36 +4191,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         setDistance={setDistance}
         isMeasuring={measureDistanceMode}
         setIsMeasuring={setMeasureDistanceMode}
+        selectedMeasurement={selectedMeasurement}
+        onClearSelectedMeasurement={clearSelectedMeasurement}
       />
 
-      {/* Add UI for selected measurement details */}
-      {selectedMeasurement && (
-        <div className="fixed top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-lg shadow-lg z-50 w-80">
-          <h3 className="text-lg font-bold mb-2">{selectedMeasurement.name || 'Measurement'}</h3>
-          <div className="mb-2">Distance: {(selectedMeasurement.distance / 1000).toFixed(2)} km</div>
-          {selectedMeasurement.area && (
-            <div className="mb-2">Area: {(selectedMeasurement.area / 10000).toFixed(2)} ha</div>
-          )}
-          <div className="mb-2">Points: {selectedMeasurement.points.length}</div>
-          <div className="flex justify-between mt-4">
-            <button 
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded"
-              onClick={() => setSelectedMeasurement(null)}
-            >
-              Close
-            </button>
-            <button 
-              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-              onClick={() => {
-                handleDeleteMeasurement(selectedMeasurement.id);
-                setSelectedMeasurement(null);
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      )}
+      {/* MarkerComponent */}
+      <MarkerComponent
+        map={map}
+        isActive={markerMode}
+        onExit={handleExitMarkerMode}
+      />
     </LoadScript>
   );
 };
@@ -3771,6 +4213,8 @@ declare global {
     tempMarkersRef: google.maps.Marker[];
     tempEdgeMarkersRef: (google.maps.Marker | google.maps.OverlayView)[];
     handleSaveAllFields?: () => Promise<void>;
+    measurementPolylines?: Record<string, google.maps.Polyline>;
+    measurementPolygons?: Record<string, google.maps.Polygon>;
   }
 }
 

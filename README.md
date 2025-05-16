@@ -1,5 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Features
+
+### Map Features
+- **Field Drawing**: Draw polygons to represent fields with area and perimeter calculations
+- **Distance Measurement**: Measure distances between points on the map
+- **Custom Markers**: Add, edit, and customize markers with labels and colors
+- **Save & Load**: Automatically save your work to the cloud or local storage
+
+### Marker Functionality
+The application includes a full-featured marker system that allows you to:
+- Add markers anywhere on the map
+- Customize marker labels
+- Change marker colors
+- Drag and reposition markers
+- Undo/redo marker actions
+- Markers are automatically saved to localStorage and persist between sessions
+
 ## Getting Started
 
 First, run the development server:

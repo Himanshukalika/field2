@@ -11,6 +11,13 @@ export interface Field {
   measurements: { length: number; width: number; }[];
 }
 
+export interface MarkerData {
+  id: string;
+  position: PolygonPoint;
+  label?: string;
+  color?: string;
+}
+
 export type MapType = 'hybrid' | 'satellite' | 'roadmap' | 'terrain';
 
 export const libraries: ("drawing" | "geometry" | "places")[] = ["drawing", "geometry", "places"];
