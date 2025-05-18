@@ -4140,7 +4140,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+            <div className="fixed bottom-16 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
               <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
                 {/* Left side: Cancel button */}
                 <div>
