@@ -91,7 +91,7 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
 
   return (
     <>
-      <div className="absolute bottom-20 right-4 sm:right-20 bg-white rounded-lg shadow-lg w-[90vw] max-w-md overflow-hidden animate-slideIn z-10 border-2 border-green-500">
+      <div className="absolute bottom-60 right-4 sm:right-20 bg-white rounded-lg shadow-lg w-[90vw] max-w-md overflow-hidden animate-slideIn z-10 border-2 border-green-500">
         <div className="flex justify-between items-center border-b border-green-200 px-4 py-3 bg-green-50">
           <h3 className="font-semibold text-green-800">{fieldName || `Field #${selectedPolygonIndex + 1}`}</h3>
           <button 

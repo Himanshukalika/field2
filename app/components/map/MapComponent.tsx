@@ -19,7 +19,15 @@ import {
   faFileImport,
   faUndo,
   faRedo,
-  faCheck
+  faCheck,
+  faPalette, 
+  faFill, 
+  faBorderStyle,
+  faTag,
+  faImage,
+  faInfoCircle,
+  faBrush, 
+  faArrowsAlt
 } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
@@ -98,9 +106,11 @@ interface PolygonToolsMenuProps {
   onChangeFillOpacity: (opacity: number) => void;
   onChangeName: (name: string) => void;
   onDelete: () => void;
-  onAddImage: (file: File) => void;
-  onDeleteImage: (imageIndex: number) => void;
-  onSetMainImage: (imageIndex: number) => void;
+  onAddImage?: (file: File) => void;
+  onDeleteImage?: (imageIndex: number) => void;
+  onSetMainImage?: (imageIndex: number) => void;
+  onToggleEditable?: () => void;
+  onToggleDraggable?: () => void;
   strokeColor: string;
   fillColor: string;
   strokeWeight: number;
@@ -109,6 +119,8 @@ interface PolygonToolsMenuProps {
   fieldImages: string[];
   mainImageIndex: number;
   selectedPolygonIndex: number | null;
+  isEditable?: boolean;
+  isDraggable?: boolean;
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpdate, className }) => {
@@ -166,6 +178,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
   // Add state to track field images
   const [fieldImages, setFieldImages] = useState<FieldImages>({});
+  
+  // Add state for tracking if the selected polygon is editable or draggable
+  const [isSelectedPolygonEditable, setIsSelectedPolygonEditable] = useState(false);
+  const [isSelectedPolygonDraggable, setIsSelectedPolygonDraggable] = useState(false);
 
   // New state for save/load functionality
   const [isSaving, setIsSaving] = useState(false);
@@ -214,29 +230,59 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           const fields = await getUserFields();
           
           if (fields && fields.length > 0) {
+            // Track already loaded field IDs to prevent duplicates
+            const loadedFieldIds = new Set(fieldPolygons.map(polygon => polygon.get('fieldId')));
+            
+            // Create a batch of polygons to add at once (more efficient than multiple state updates)
+            const newPolygons: google.maps.Polygon[] = [];
+            
             // Automatically load all fields without asking the user
-            // Convert and add each field to the map
+            // Convert and add each field to the map (if not already loaded)
             fields.forEach(fieldData => {
-              const polygon = fieldDataToPolygon(fieldData, map);
-              setFieldPolygons(prev => [...prev, polygon]);
+              // Skip if this field is already loaded
+              if (fieldData.id && loadedFieldIds.has(fieldData.id)) {
+                console.log(`Field ${fieldData.id} already loaded, skipping`);
+                return;
+              }
+              
+              // Create the polygon but don't add to map yet
+              const polygon = fieldDataToPolygon(fieldData, null); // Pass null instead of map
+              
+              // Store the field ID with the polygon for future reference
+              if (fieldData.id) {
+                polygon.set('fieldId', fieldData.id);
+                loadedFieldIds.add(fieldData.id); // Mark as loaded
+              }
+              
+              // Add to our batch
+              newPolygons.push(polygon);
             });
             
-            // Set up a small delay to calculate the bounds
-            setTimeout(() => {
-              if (fields.length === 1) {
-                // Center on the single field
-                centerMapOnField(map, fields[0]);
-              } else if (fields.length > 1) {
-                // Create bounds to contain all fields
-                const bounds = new google.maps.LatLngBounds();
-                fields.forEach(field => {
-                  field.points.forEach(point => {
-                    bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+            // Now add all polygons to the map and state at once
+            if (newPolygons.length > 0) {
+              // First add to map
+              newPolygons.forEach(polygon => polygon.setMap(map));
+              
+              // Then update state once
+              setFieldPolygons(prev => [...prev, ...newPolygons]);
+              
+              // Set up a small delay to calculate the bounds
+              setTimeout(() => {
+                if (fields.length === 1) {
+                  // Center on the single field
+                  centerMapOnField(map, fields[0]);
+                } else if (fields.length > 1) {
+                  // Create bounds to contain all fields
+                  const bounds = new google.maps.LatLngBounds();
+                  fields.forEach(field => {
+                    field.points.forEach(point => {
+                      bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+                    });
                   });
-                });
-                map.fitBounds(bounds);
-              }
-            }, 100);
+                  map.fitBounds(bounds);
+                }
+              }, 100);
+            }
           }
         } catch (error) {
           console.error('Error auto-loading fields:', error);
@@ -1944,7 +1990,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       // Add double click listener to close the polygon
       mapDblClickListener = map.addListener('dblclick', (e: google.maps.MapMouseEvent) => {
         if (vertices.length >= 3) {
-          // Create final polygon
+          // Create final polygon - IMPORTANT: Don't set editable or draggable to true initially
           const polygon = new google.maps.Polygon({
             map: map,
             paths: vertices,
@@ -1952,8 +1998,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             strokeWeight: strokeWeight,
             fillColor: polygonColor,  // Use the green color
             fillOpacity: polygonFillOpacity,
-            editable: true,
-            draggable: true
+            editable: false, // Set to false initially to prevent ghost fields
+            draggable: false // Set to false initially to prevent ghost fields
           });
           
           // Clean up
@@ -2185,18 +2231,36 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     
     // Toggle selection if clicking the same polygon
     if (selectedPolygonIndex === index) {
+      // Get the current polygon to reset its styling
+      const polygon = fieldPolygons[index];
+      
+      // Reset the polygon's visual styling
+      polygon.setOptions({
+        strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+        zIndex: index + 10
+      });
+      
       // Just deselect the polygon
       setSelectedPolygonIndex(null);
       // Close the tools menu when deselecting
       setShowPolygonTools(false);
       // Clear selected field info
       setSelectedFieldInfo(null);
+      // Reset editable/draggable state
+      setIsSelectedPolygonEditable(false);
+      setIsSelectedPolygonDraggable(false);
     } else {
       // Select the new polygon
       setSelectedPolygonIndex(index);
       
       // Get the styling properties from the clicked polygon
       const polygon = fieldPolygons[index];
+      
+      // Make the selected polygon stand out visually
+      polygon.setOptions({
+        strokeWeight: 4,
+        zIndex: 1000
+      });
       
       // Calculate area
       const path = polygon.getPath();
@@ -2226,6 +2290,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
         fieldName: polygon.get('fieldName') || 'Area',
       });
+      
+      // Set editable/draggable state
+      setIsSelectedPolygonEditable(polygon.getEditable());
+      setIsSelectedPolygonDraggable(polygon.getDraggable());
       
       // Don't automatically show tools when selecting a polygon
       // The user will need to click the tools button to show the menu
@@ -2295,43 +2363,55 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Toggle editable state
       const newEditable = !currentEditable;
-      polygon.setEditable(newEditable);
       
-      // Show/hide markers based on editable state
-      const vertexMarkers = polygon.get('vertexMarkers') || [];
-      const edgeMarkers = polygon.get('edgeMarkers') || [];
+      // Important: Set the React state first
+      setIsSelectedPolygonEditable(newEditable);
       
-      if (newEditable) {
-        // Show vertex markers
-        vertexMarkers.forEach((marker: google.maps.Marker) => {
-          marker.setMap(map);
-        });
+      // CRITICAL FIX: Remove the polygon from the map temporarily
+      polygon.setMap(null);
+      
+      // Use a timeout to ensure React has updated
+      setTimeout(() => {
+        // Add the polygon back to the map with the new editable state
+        polygon.setEditable(newEditable);
+        polygon.setMap(map);
         
-        // Show edge markers for edge click & drag functionality
-        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-          marker.setMap(map);
-        });
+        // Show/hide markers based on editable state
+        const vertexMarkers = polygon.get('vertexMarkers') || [];
+        const edgeMarkers = polygon.get('edgeMarkers') || [];
         
-        // The addEdgeMarkers function might be needed to update markers
-        const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
-        if (typeof addEdgeMarkersFn === 'function') {
-          addEdgeMarkersFn();
+        if (newEditable) {
+          // Show vertex markers
+          vertexMarkers.forEach((marker: google.maps.Marker) => {
+            marker.setMap(map);
+          });
+          
+          // Show edge markers for edge click & drag functionality
+          edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+            marker.setMap(map);
+          });
+          
+          // The addEdgeMarkers function might be needed to update markers
+          const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
+          if (typeof addEdgeMarkersFn === 'function') {
+            addEdgeMarkersFn();
+          }
+        } else {
+          // Hide all markers
+          vertexMarkers.forEach((marker: google.maps.Marker) => {
+            marker.setMap(null);
+          });
+          
+          edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+            marker.setMap(null);
+          });
+          
+          // Clear any active drag markers
+          clearAllRedMarkers();
         }
-      } else {
-        // Hide all markers
-        vertexMarkers.forEach((marker: google.maps.Marker) => {
-          marker.setMap(null);
-        });
-        
-        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
-          marker.setMap(null);
-        });
-        
-        // Clear any active drag markers
-        clearAllRedMarkers();
-      }
+      }, 50);
     }
-  }, [fieldPolygons, selectedPolygonIndex, map]);
+  }, [fieldPolygons, selectedPolygonIndex, map, clearAllRedMarkers]);
 
   const handleToggleDraggable = useCallback(() => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
@@ -2339,7 +2419,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const currentDraggable = polygon.getDraggable();
       
       // Toggle draggable state
-      polygon.setDraggable(!currentDraggable);
+      const newDraggable = !currentDraggable;
+      
+      // Set React state first
+      setIsSelectedPolygonDraggable(newDraggable);
+      
+      // CRITICAL FIX: Remove the polygon from the map temporarily
+      polygon.setMap(null);
+      
+      // Use a timeout to ensure React has updated
+      setTimeout(() => {
+        // Add the polygon back to the map with the new draggable state
+        polygon.setDraggable(newDraggable);
+        polygon.setMap(map);
+      }, 50);
     }
   }, [fieldPolygons, selectedPolygonIndex]);
 
@@ -2389,10 +2482,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const handleFinishDrawing = useCallback(() => {
     // Check if we have at least 3 vertices to make a polygon
     if (window.tempVerticesRef && window.tempVerticesRef.length >= 3) {
-      // Create a polygon from current vertices
+      // Create a polygon from current vertices - IMPORTANT: Create without map first
       const polygon = new google.maps.Polygon({
-        map: map,
-        paths: window.tempVerticesRef,
+        paths: window.tempVerticesRef, // Don't set map initially
         strokeColor: strokeColor,
         strokeWeight: strokeWeight,
         fillColor: polygonColor,
@@ -2400,6 +2492,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         editable: false,
         draggable: false
       });
+      
+      // Add to map after creation to prevent ghost fields
+      polygon.setMap(map);
       
       // Clean up temporary drawing objects
         if (window.tempPolylineRef) {
@@ -2627,6 +2722,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     
     // First, clean up any existing labels
     fieldPolygons.forEach((polygon) => {
+      // Skip if polygon is not on the map
+      if (!polygon.getMap()) return;
+      
       const existingLabel = polygon.get('labelDiv') as HTMLDivElement;
       if (existingLabel) {
         existingLabel.parentElement?.removeChild(existingLabel);
@@ -2642,6 +2740,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     
     // Create custom overlays for all polygons
     fieldPolygons.forEach((polygon, index) => {
+      // Skip if polygon is not on the map
+      if (!polygon.getMap()) return;
+      
       // Calculate polygon center
       const path = polygon.getPath();
       const bounds = new google.maps.LatLngBounds();
@@ -2767,6 +2868,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     
     const listener = map.addListener('idle', () => {
       fieldPolygons.forEach((polygon) => {
+        // Skip if polygon is not on the map
+        if (!polygon.getMap()) return;
+        
         const overlay = polygon.get('labelOverlay') as any;
         if (overlay && typeof overlay.updatePosition === 'function') {
           // Recalculate center
@@ -3062,6 +3166,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       ? fieldImages[selectedPolygonIndex].mainImageIndex 
       : 0}
     selectedPolygonIndex={selectedPolygonIndex}
+    isEditable={isSelectedPolygonEditable}
+    isDraggable={isSelectedPolygonDraggable}
   />
 
   // ... existing code ...
@@ -3248,26 +3354,56 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             const fields = await getUserFields();
             
             if (fields && fields.length > 0) {
+              // Track already loaded field IDs to prevent duplicates
+              const loadedFieldIds = new Set(fieldPolygons.map(polygon => polygon.get('fieldId')));
+              
+              // Create a batch of polygons to add at once (more efficient than multiple state updates)
+              const newPolygons: google.maps.Polygon[] = [];
+              
               // Automatically load all fields without asking
               fields.forEach(fieldData => {
-                const polygon = fieldDataToPolygon(fieldData, map);
-                setFieldPolygons(prev => [...prev, polygon]);
+                // Skip if this field is already loaded
+                if (fieldData.id && loadedFieldIds.has(fieldData.id)) {
+                  console.log(`Field ${fieldData.id} already loaded, skipping`);
+                  return;
+                }
+                
+                // Create the polygon but don't add to map yet
+                const polygon = fieldDataToPolygon(fieldData, null); // Pass null instead of map
+                
+                // Store the field ID with the polygon for future reference
+                if (fieldData.id) {
+                  polygon.set('fieldId', fieldData.id);
+                  loadedFieldIds.add(fieldData.id); // Mark as loaded
+                }
+                
+                // Add to our batch
+                newPolygons.push(polygon);
               });
               
-              // Fit map to show all fields
-              setTimeout(() => {
-                if (fields.length === 1) {
-                  centerMapOnField(map, fields[0]);
-                } else if (fields.length > 1) {
-                  const bounds = new google.maps.LatLngBounds();
-                  fields.forEach(field => {
-                    field.points.forEach(point => {
-                      bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+              // Now add all polygons to the map and state at once
+              if (newPolygons.length > 0) {
+                // First add to map
+                newPolygons.forEach(polygon => polygon.setMap(map));
+                
+                // Then update state once
+                setFieldPolygons(prev => [...prev, ...newPolygons]);
+                
+                // Fit map to show all fields
+                setTimeout(() => {
+                  if (fields.length === 1) {
+                    centerMapOnField(map, fields[0]);
+                  } else if (fields.length > 1) {
+                    const bounds = new google.maps.LatLngBounds();
+                    fields.forEach(field => {
+                      field.points.forEach(point => {
+                        bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+                      });
                     });
-                  });
-                  map.fitBounds(bounds);
-                }
-              }, 100);
+                    map.fitBounds(bounds);
+                  }
+                }, 100);
+              }
             }
           } catch (error) {
             console.error('Error loading fields after authentication:', error);
@@ -3832,6 +3968,87 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     setShowDistanceTools(false);
   };
 
+  // Add a cleanup function to remove ghost fields
+  useEffect(() => {
+    if (!map || fieldPolygons.length <= 1) return;
+    
+    // Find and remove duplicate polygons (ghost fields)
+    const cleanupGhostFields = () => {
+      console.log("Running ghost field cleanup...");
+      
+      // Track field IDs we've seen
+      const seenFieldIds = new Set<string>();
+      const duplicateIndices: number[] = [];
+      
+      // Find duplicates
+      fieldPolygons.forEach((polygon, index) => {
+        const fieldId = polygon.get('fieldId');
+        
+        // If this field has an ID and we've seen it before, it's a duplicate
+        if (fieldId) {
+          if (seenFieldIds.has(fieldId)) {
+            console.log(`Found duplicate field: ${fieldId} at index ${index}`);
+            duplicateIndices.push(index);
+          } else {
+            seenFieldIds.add(fieldId);
+          }
+        }
+      });
+      
+      // Remove duplicates if found (in reverse order to maintain correct indices)
+      if (duplicateIndices.length > 0) {
+        console.log(`Removing ${duplicateIndices.length} ghost fields`);
+        
+        // Sort in descending order to remove from end first
+        duplicateIndices.sort((a, b) => b - a);
+        
+        // Create a new array without the duplicates
+        const cleanedPolygons = [...fieldPolygons];
+        
+        duplicateIndices.forEach(index => {
+          // Remove the polygon from the map
+          const polygon = cleanedPolygons[index];
+          
+          // Clean up any markers associated with this polygon
+          const vertexMarkers = polygon.get('vertexMarkers') || [];
+          vertexMarkers.forEach((marker: google.maps.Marker) => {
+            marker.setMap(null);
+          });
+          
+          const edgeMarkers = polygon.get('edgeMarkers') || [];
+          edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+            marker.setMap(null);
+          });
+          
+          // Remove the custom label overlay
+          const overlay = polygon.get('labelOverlay') as any;
+          if (overlay && typeof overlay.setMap === 'function') {
+            overlay.setMap(null);
+          }
+          
+          const labelDiv = polygon.get('labelDiv') as HTMLDivElement;
+          if (labelDiv && labelDiv.parentElement) {
+            labelDiv.parentElement.removeChild(labelDiv);
+          }
+          
+          // Remove the polygon from the map
+          polygon.setMap(null);
+          
+          // Remove from array
+          cleanedPolygons.splice(index, 1);
+        });
+        
+        // Update state with cleaned polygons
+        setFieldPolygons(cleanedPolygons);
+      }
+    };
+    
+    // Run cleanup after a short delay to ensure all fields are loaded
+    const timeoutId = setTimeout(cleanupGhostFields, 1000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [map, fieldPolygons, setFieldPolygons]);
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -3940,6 +4157,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             {[...fieldPolygons].reverse().map((polygon, reversedIndex) => {
               // Calculate the original index from the reversed index
               const index = fieldPolygons.length - 1 - reversedIndex;
+              
+              // IMPORTANT: Don't render React polygons for any selected polygon
+              // This completely prevents ghost fields by only using the native Google Maps polygon
+              if (selectedPolygonIndex === index) {
+                return <React.Fragment key={index}></React.Fragment>;
+              }
+              
               return (
               <Polygon
                 key={index}
@@ -3948,11 +4172,11 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     fillColor: polygon.get('fillColor') || polygonColor,
                     fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
                     strokeColor: polygon.get('strokeColor') || strokeColor,
-                    strokeWeight: selectedPolygonIndex === index ? 4 : (polygon.get('strokeWeight') || strokeWeight),
+                    strokeWeight: polygon.get('strokeWeight') || strokeWeight,
                     clickable: true,
-                    editable: polygon.getEditable(),
-                    draggable: polygon.getDraggable(),
-                    zIndex: selectedPolygonIndex === index ? 1000 : (index + 10), // Give higher z-index to more recently created polygons
+                    editable: false, // Never make React polygons editable
+                    draggable: false, // Never make React polygons draggable
+                    zIndex: (index + 10), // Give higher z-index to more recently created polygons
                 }}
                 onClick={(e) => {
                     // If we're in drawing mode, let the click pass through
@@ -3979,7 +4203,32 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
           {/* Add toggle button for polygon tools */}
           {selectedPolygonIndex !== null && (
-            <div className="absolute bottom-20 right-4 z-10">
+            <div className="absolute bottom-20 right-4 z-10 flex gap-2">
+              {/* Edit button */}
+              <button
+                onClick={handleToggleEditable}
+                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 ${isSelectedPolygonEditable ? 'border-blue-500' : 'border-gray-300'}`}
+                title={isSelectedPolygonEditable ? "Finish Editing Vertices" : "Edit Field Shape"}
+              >
+                <FontAwesomeIcon 
+                  icon={faEdit} 
+                  className={`text-xl ${isSelectedPolygonEditable ? 'text-blue-700' : 'text-gray-700'}`}
+                />
+              </button>
+              
+              {/* Move button */}
+              <button
+                onClick={handleToggleDraggable}
+                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 ${isSelectedPolygonDraggable ? 'border-blue-500' : 'border-gray-300'}`}
+                title={isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
+              >
+                <FontAwesomeIcon 
+                  icon={faArrowsAlt} 
+                  className={`text-xl ${isSelectedPolygonDraggable ? 'text-blue-700' : 'text-gray-700'}`}
+                />
+              </button>
+              
+              {/* Tools button */}
               <button
                 onClick={() => setShowPolygonTools(prev => !prev)}
                 className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
@@ -4034,6 +4283,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               ? fieldImages[selectedPolygonIndex].mainImageIndex 
               : 0}
             selectedPolygonIndex={selectedPolygonIndex}
+            isEditable={isSelectedPolygonEditable}
+            isDraggable={isSelectedPolygonDraggable}
           />
           
           {/* Add PolygonToolsMenu for distance measurements */}
@@ -4140,7 +4391,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
           {/* Drawing controls banner */}
           {isDrawingMode && (
-            <div className="fixed bottom-16 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
               <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
                 {/* Left side: Cancel button */}
                 <div>
@@ -4218,6 +4469,67 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     }`}
                   >
                     <FontAwesomeIcon icon={faCheck} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Field editing controls banner */}
+          {selectedPolygonIndex !== null && (isSelectedPolygonEditable || isSelectedPolygonDraggable) && (
+            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+              <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
+                {/* Left side: Cancel button */}
+                <div>
+                  <button
+                    onClick={() => {
+                      // Disable both edit modes
+                      if (isSelectedPolygonEditable) handleToggleEditable();
+                      if (isSelectedPolygonDraggable) handleToggleDraggable();
+                    }}
+                    className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
+                </div>
+                
+                {/* Center: Edit mode buttons */}
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={handleToggleEditable}
+                    className={`flex items-center px-3 py-2 rounded-md shadow transition-colors ${
+                      isSelectedPolygonEditable
+                        ? "bg-green-500 text-white"
+                        : "bg-blue-500 text-white hover:bg-blue-600"
+                    }`}
+                    title={isSelectedPolygonEditable ? "Finish Editing Vertices" : "Edit Field Shape"}
+                  >
+                    <FontAwesomeIcon icon={faEdit} className="mr-1" />
+                    <span className="text-sm">Edit Shape</span>
+                  </button>
+                  
+                  <button
+                    onClick={handleToggleDraggable}
+                    className={`flex items-center px-3 py-2 rounded-md shadow transition-colors ${
+                      isSelectedPolygonDraggable
+                        ? "bg-green-500 text-white"
+                        : "bg-blue-500 text-white hover:bg-blue-600"
+                    }`}
+                    title={isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
+                  >
+                    <FontAwesomeIcon icon={faArrowsAlt} className="mr-1" />
+                    <span className="text-sm">Move Field</span>
+                  </button>
+                </div>
+                
+                {/* Right side: Save button */}
+                <div>
+                  <button
+                    onClick={handleSaveAllFields}
+                    className="flex items-center gap-1 px-2 py-2 bg-green-500 text-white rounded-md shadow hover:bg-green-600 transition-colors"
+                    title="Save Changes"
+                  >
+                    <FontAwesomeIcon icon={faFileImport} />
                   </button>
                 </div>
               </div>
@@ -4302,6 +4614,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         isActive={markerMode}
         onExit={handleExitMarkerMode}
       />
+
+      
     </LoadScript>
   );
 };
