@@ -59,7 +59,7 @@ export const polygonToFieldData = (
  */
 export const fieldDataToPolygon = (
   fieldData: FieldData, 
-  map: google.maps.Map
+  map: google.maps.Map | null
 ): google.maps.Polygon => {
   // Convert points to LatLng
   const path = fieldData.points.map(point => {
