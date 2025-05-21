@@ -28,6 +28,8 @@ interface PolygonToolsMenuProps {
   onAddImage?: (file: File) => void;
   onDeleteImage?: (imageIndex: number) => void;
   onSetMainImage?: (imageIndex: number) => void;
+  onToggleEditable?: () => void;
+  onToggleDraggable?: () => void;
   strokeColor: string;
   fillColor: string;
   strokeWeight: number;
@@ -36,6 +38,8 @@ interface PolygonToolsMenuProps {
   fieldImages: string[];
   mainImageIndex: number;
   selectedPolygonIndex: number | null;
+  isEditable?: boolean;
+  isDraggable?: boolean;
 }
 
 type TabType = 'basic' | 'style' | 'images';
@@ -52,6 +56,8 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   onAddImage,
   onDeleteImage,
   onSetMainImage,
+  onToggleEditable,
+  onToggleDraggable,
   strokeColor,
   fillColor,
   strokeWeight,
@@ -59,7 +65,9 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
   fieldName,
   fieldImages = [],
   mainImageIndex = 0,
-  selectedPolygonIndex
+  selectedPolygonIndex,
+  isEditable,
+  isDraggable
 }) => {
   const [showImageUploader, setShowImageUploader] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('basic');
@@ -157,6 +165,36 @@ const PolygonToolsMenu: React.FC<PolygonToolsMenuProps> = ({
                   className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 />
               </div>
+              
+              {/* Toggle Editable */}
+              {onToggleEditable && (
+                <div className="mb-3 flex items-center justify-between">
+                  <label className="text-sm font-medium text-green-800">
+                    Enable Vertex Editing
+                  </label>
+                  <button 
+                    onClick={onToggleEditable}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full ${isEditable ? 'bg-green-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${isEditable ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )}
+              
+              {/* Toggle Draggable */}
+              {onToggleDraggable && (
+                <div className="mb-3 flex items-center justify-between">
+                  <label className="text-sm font-medium text-green-800">
+                    Enable Field Dragging
+                  </label>
+                  <button 
+                    onClick={onToggleDraggable}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full ${isDraggable ? 'bg-green-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${isDraggable ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )}
               
               {/* Delete Button */}
               <div className="mt-4">
