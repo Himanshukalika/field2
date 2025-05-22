@@ -27,7 +27,9 @@ import {
   faImage,
   faInfoCircle,
   faBrush, 
-  faArrowsAlt
+  faArrowsAlt,
+  faPencilAlt,
+  faPen
 } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
@@ -2368,15 +2370,15 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Important: Set the React state first
       setIsSelectedPolygonEditable(newEditable);
-      
-      // Show/hide markers based on editable state
-      const vertexMarkers = polygon.get('vertexMarkers') || [];
-      const edgeMarkers = polygon.get('edgeMarkers') || [];
+        
+        // Show/hide markers based on editable state
+        const vertexMarkers = polygon.get('vertexMarkers') || [];
+        const edgeMarkers = polygon.get('edgeMarkers') || [];
     
       console.log("Number of vertex markers:", vertexMarkers.length);
       console.log("Number of edge markers:", edgeMarkers.length);
-      
-      if (newEditable) {
+        
+        if (newEditable) {
         console.log("Setting markers visible");
         
         // Create vertex markers if they don't exist
@@ -2798,8 +2800,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           if (typeof addEdgeMarkersFn === 'function') {
             addEdgeMarkersFn();
           }
-        }
-      } else {
+          }
+        } else {
         console.log("Setting markers invisible");
           // Hide all markers
           vertexMarkers.forEach((marker: google.maps.Marker) => {
@@ -4462,8 +4464,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       libraries={libraries}
     >
       <div className="flex flex-col h-screen w-full">
-        {/* Add the area information banner for selected field */}
-        {selectedFieldInfo && !isDrawingMode && (
+          {/* Add the area information banner for selected field */}
+          {selectedFieldInfo && !isDrawingMode && (
           <>
             <div className="fixed top-0 left-0 right-0 bg-yellow-500 shadow-lg z-[100]">
               <div className="w-full flex justify-between items-center p-2">
@@ -4480,12 +4482,54 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   <FontAwesomeIcon icon={faTimes} className="text-xl" />
                 </button>
                 
-                {/* Display field name in center */}
-                <div className="flex-1 text-center">
-                  <span className="font-medium text-white">{selectedFieldInfo.name}</span>
+                {/* Field edit controls in center */}
+                <div className="flex-1 flex justify-center items-center gap-4">
+                  {/* Display field name */}
+                  <div className="text-center">
+                    <span className="font-medium text-white text-lg">{selectedFieldInfo.name}</span>
+                  </div>
+                  
+                  {/* Edit field shape button - icon only */}
+                  <button
+                    onClick={handleToggleEditable}
+                    className={`p-2 transition-colors ${
+                      isSelectedPolygonEditable 
+                        ? "text-green-300" 
+                        : "text-white hover:text-yellow-200"
+                    }`}
+                    title={isSelectedPolygonEditable ? "Finish Editing Vertices" : "Edit Field Shape"}
+                  >
+                    <FontAwesomeIcon icon={faPencilAlt} className="text-lg" />
+                  </button>
+                  
+                  {/* Move field button - icon only */}
+                  <button
+                    onClick={handleToggleDraggable}
+                    className={`p-2 transition-colors ${
+                      isSelectedPolygonDraggable 
+                        ? "text-green-300" 
+                        : "text-white hover:text-yellow-200"
+                    }`}
+                    title={isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
+                  >
+                    <FontAwesomeIcon icon={faArrowsAlt} className="text-lg" />
+                  </button>
                 </div>
                 
-                <div className="flex-1"></div>
+                {/* Tools button on right */}
+                <div className="flex items-center">
+                  <button
+                    onClick={() => setShowPolygonTools(prev => !prev)}
+                    className={`p-1 rounded-md transition-colors ${
+                      showPolygonTools 
+                        ? "bg-white/20 text-white" 
+                        : "text-white hover:bg-white/20"
+                    }`}
+                    title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
+                  >
+                    <FontAwesomeIcon icon={showPolygonTools ? faTimes : faCog} className="text-xl" />
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -4632,46 +4676,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             })}
           </GoogleMap>
 
-          {/* Add toggle button for polygon tools */}
-          {selectedPolygonIndex !== null && (
-            <div className="absolute bottom-20 right-4 z-10 flex gap-2">
-              {/* Edit button */}
-              <button
-                onClick={handleToggleEditable}
-                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 ${isSelectedPolygonEditable ? 'border-blue-500' : 'border-gray-300'}`}
-                title={isSelectedPolygonEditable ? "Finish Editing Vertices" : "Edit Field Shape"}
-              >
-                <FontAwesomeIcon 
-                  icon={faEdit} 
-                  className={`text-xl ${isSelectedPolygonEditable ? 'text-blue-700' : 'text-gray-700'}`}
-                />
-              </button>
-              
-              {/* Move button */}
-              <button
-                onClick={handleToggleDraggable}
-                className={`bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 ${isSelectedPolygonDraggable ? 'border-blue-500' : 'border-gray-300'}`}
-                title={isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
-              >
-                <FontAwesomeIcon 
-                  icon={faArrowsAlt} 
-                  className={`text-xl ${isSelectedPolygonDraggable ? 'text-blue-700' : 'text-gray-700'}`}
-                />
-              </button>
-              
-              {/* Tools button */}
-              <button
-                onClick={() => setShowPolygonTools(prev => !prev)}
-                className="bg-white rounded-full shadow-lg p-3 transition-all hover:bg-gray-100 border-2 border-green-500"
-                title={showPolygonTools ? "Close Field Tools" : "Open Field Tools"}
-              >
-                <FontAwesomeIcon 
-                  icon={showPolygonTools ? faTimes : faCog} 
-                  className="text-xl text-green-700" 
-                />
-              </button>
-            </div>
-          )}
+          {/* We've moved the polygon tools buttons to the yellow banner */}
 
           {/* Add toggle button for distance measurement tools */}
           {selectedMeasurement && !selectedPolygonIndex && (
@@ -4820,87 +4825,78 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             </div>
           )}
 
-          {/* Drawing controls banner */}
-          {isDrawingMode && (
+          {/* Drawing/editing controls banner */}
+          {(isDrawingMode || (selectedPolygonIndex !== null && isSelectedPolygonEditable)) && (
             <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
               <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
                 {/* Left side: Cancel button */}
                 <div>
                   <button
-                    onClick={handleCancelDrawing}
+                    onClick={isDrawingMode ? handleCancelDrawing : handleToggleEditable}
                     className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
                   >
                     <FontAwesomeIcon icon={faTimes} />
                   </button>
                 </div>
                 
-                {/* Center: Undo/Redo buttons */}
+                {/* Center: Undo/Redo buttons - only shown in drawing mode */}
                 <div className="flex gap-2 justify-center">
-                  <button
-                    onClick={handleUndo}
-                    disabled={undoStack.length === 0}
-                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                      undoStack.length > 0
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
-                    title="Undo"
-                  >
-                    <FontAwesomeIcon icon={faUndo} />
-                  </button>
-                  
-                  <button
-                    onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                      redoStack.length > 0
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
-                title="Redo"
-              >
-                    <FontAwesomeIcon icon={faRedo} />
-              </button>
+                  {isDrawingMode && (
+                    <>
+                      <button
+                        onClick={handleUndo}
+                        disabled={undoStack.length === 0}
+                        className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                          undoStack.length > 0
+                            ? "bg-blue-500 text-white hover:bg-blue-600"
+                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
+                        title="Undo"
+                      >
+                        <FontAwesomeIcon icon={faUndo} />
+                      </button>
+                      
+                      <button
+                        onClick={handleRedo}
+                        disabled={redoStack.length === 0}
+                        className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                          redoStack.length > 0
+                            ? "bg-blue-500 text-white hover:bg-blue-600"
+                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
+                        title="Redo"
+                      >
+                        <FontAwesomeIcon icon={faRedo} />
+                      </button>
+                    </>
+                  )}
                 </div>
                 
                 {/* Right side: Save & Finish buttons */}
                 <div className="flex gap-2">
                   {/* Save button */}
                   <button
-                    onClick={() => {
-                      // When in drawing mode with active vertices, save the current drawing
-                      if (window.tempVerticesRef && window.tempVerticesRef.length >= 3) {
-                        handleFinishDrawing();
-                      } 
-                      // Otherwise save all existing fields
-                      else {
-                        handleSaveAllFields();
-                      }
-                    }}
-                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                      fieldPolygons.length === 0 && (!window.tempVerticesRef || window.tempVerticesRef.length < 3)
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-blue-500 text-white hover:bg-blue-600"
-                    }`}
-                    title={window.tempVerticesRef && window.tempVerticesRef.length >= 3 
-                      ? "Save Current Drawing" 
-                      : "Save All Fields"}
+                    onClick={handleSaveAllFields}
+                    className="flex items-center px-2 py-2 rounded-md shadow transition-colors bg-blue-500 text-white hover:bg-blue-600"
+                    title="Save Changes"
                   >
                     <FontAwesomeIcon icon={faFileImport} />
                   </button>
                   
-                  {/* Finish button */}
-                  <button
-                    onClick={handleFinishDrawing}
-                    disabled={window.tempVerticesRef.length < 3}
-                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                      window.tempVerticesRef.length >= 3
-                        ? "bg-green-500 text-white hover:bg-green-600"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={faCheck} />
-                  </button>
+                  {/* Finish button - only shown in drawing mode */}
+                  {isDrawingMode && (
+                    <button
+                      onClick={handleFinishDrawing}
+                      disabled={window.tempVerticesRef.length < 3}
+                      className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                        window.tempVerticesRef.length >= 3
+                          ? "bg-green-500 text-white hover:bg-green-600"
+                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      }`}
+                    >
+                      <FontAwesomeIcon icon={faCheck} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
