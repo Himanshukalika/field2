@@ -20,6 +20,7 @@ interface NavbarProps {
   onFinishDrawing?: () => void;
   canFinishDrawing?: boolean;
   onLogin?: () => void;
+  isEditingMode?: boolean;
 }
 
 const Navbar = ({ 
@@ -28,7 +29,8 @@ const Navbar = ({
   onCancelDrawing, 
   onFinishDrawing,
   canFinishDrawing = false,
-  onLogin = () => {}
+  onLogin = () => {},
+  isEditingMode = false
 }: NavbarProps) => {
   const { user, login, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -74,7 +76,7 @@ const Navbar = ({
 
   return (
     <div className="bg-gradient-to-r from-[#DAA520] to-[#B8860B] text-white px-2 sm:px-4 py-2 flex items-center h-12 shadow-md w-full overflow-visible">
-      {!isDrawingMode ? (
+      {!isDrawingMode && !isEditingMode ? (
         <>
           <div className="flex-1 max-w-[70%] sm:max-w-[75%] md:max-w-[80%] mr-1 sm:mr-2">
       <SearchBox onPlaceSelect={onPlaceSelect} />
@@ -139,7 +141,7 @@ const Navbar = ({
           </div>
         </>
       ) : (
-        // Drawing mode banner (yellow color comes from parent gradient)
+        // Drawing mode or editing mode banner (yellow color comes from parent gradient)
         <div className="w-full flex justify-between items-center">
           <button
             onClick={onCancelDrawing}

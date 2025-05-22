@@ -298,29 +298,48 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Add a more direct function to update the banner
   const updateBannerInfo = useCallback(() => {
     if (!window.tempVerticesRef || window.tempVerticesRef.length < 2) {
-      setBannerInfo({ area: 0, perimeter: 0, vertices: 0 });
+      // Keep previous values instead of setting to zero
       return;
     }
 
-    // Calculate perimeter
+    try {
+      // Calculate perimeter with error handling
     let perimeter = 0;
     for (let i = 0; i < window.tempVerticesRef.length; i++) {
       const p1 = window.tempVerticesRef[i];
       const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
+        if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
       perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+        }
     }
 
     // Calculate area if we have at least 3 vertices
     let area = 0;
     if (window.tempVerticesRef.length >= 3) {
+        // Ensure all vertices are valid before calculating area
+        const validVertices = window.tempVerticesRef.every(
+          vertex => vertex && typeof vertex.lat === 'function' && typeof vertex.lng === 'function'
+        );
+        
+        if (validVertices) {
       area = google.maps.geometry.spherical.computeArea(window.tempVerticesRef);
+        }
     }
 
+      // Only update if we have valid values and use requestAnimationFrame for smoother updates
+      if (perimeter > 0 || area > 0) {
+        requestAnimationFrame(() => {
     setBannerInfo({
       area: area / 10000, // Convert to hectares
       perimeter: perimeter / 1000, // Convert to kilometers
       vertices: window.tempVerticesRef.length
     });
+        });
+      }
+    } catch (error) {
+      console.error("Error updating banner:", error);
+      // Don't reset values on error
+    }
   }, []);
 
   // Update banner info when vertices change
@@ -352,7 +371,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
   // Add effect to update banner info when vertices are dragged
   useEffect(() => {
-    if (isDrawingMode && window.tempVerticesRef) {
+    if ((isDrawingMode || isSelectedPolygonEditable) && window.tempVerticesRef) {
       const updateBanner = () => {
         // Calculate perimeter
         let perimeter = 0;
@@ -376,27 +395,48 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       };
 
       // Add listeners to update banner when vertices change
-      if (window.tempPolylineRef) {
+      if (isDrawingMode && window.tempPolylineRef) {
         const path = window.tempPolylineRef.getPath();
         google.maps.event.addListener(path, 'set_at', updateBanner);
         google.maps.event.addListener(path, 'insert_at', updateBanner);
         google.maps.event.addListener(path, 'remove_at', updateBanner);
       }
+      
+      // Add listeners for edit mode
+      if (isSelectedPolygonEditable && selectedPolygonIndex !== null) {
+        const polygon = fieldPolygons[selectedPolygonIndex];
+        if (polygon) {
+          const path = polygon.getPath();
+          google.maps.event.addListener(path, 'set_at', updateBanner);
+          google.maps.event.addListener(path, 'insert_at', updateBanner);
+          google.maps.event.addListener(path, 'remove_at', updateBanner);
+        }
+      }
 
       return () => {
-        if (window.tempPolylineRef) {
+        if (isDrawingMode && window.tempPolylineRef) {
           const path = window.tempPolylineRef.getPath();
           google.maps.event.clearListeners(path, 'set_at');
           google.maps.event.clearListeners(path, 'insert_at');
           google.maps.event.clearListeners(path, 'remove_at');
         }
+        
+        if (isSelectedPolygonEditable && selectedPolygonIndex !== null) {
+          const polygon = fieldPolygons[selectedPolygonIndex];
+          if (polygon) {
+            const path = polygon.getPath();
+            google.maps.event.clearListeners(path, 'set_at');
+            google.maps.event.clearListeners(path, 'insert_at');
+            google.maps.event.clearListeners(path, 'remove_at');
+          }
+        }
       };
     }
-  }, [isDrawingMode]);
+  }, [isDrawingMode, isSelectedPolygonEditable, selectedPolygonIndex, fieldPolygons]);
 
   // Add effect to update banner info when polyline is updated (including during drag)
   useEffect(() => {
-    if (!isDrawingMode || !map) return;
+    if ((!isDrawingMode && !isSelectedPolygonEditable) || !map) return;
 
     // Define a listener to update on map events
     const updateMapListener = map.addListener('idle', updateBannerInfo);
@@ -409,14 +449,27 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     // Add custom polyline listener
     let polylineUpdateInterval: NodeJS.Timeout | null = null;
     
-    if (isDrawingMode) {
-      // Check and update banner frequently during drawing mode (more frequent updates)
+    if (isDrawingMode || isSelectedPolygonEditable) {
+      // Check and update banner frequently during drawing or editing mode
       polylineUpdateInterval = setInterval(() => {
         if (window.tempVerticesRef && window.tempVerticesRef.length > 0) {
           updateBannerInfo();
         }
-      }, 50); // Update every 50ms for smoother updates
-    }
+      }, 16); // Update every 16ms (approximately 60fps) for very smooth updates
+      
+      // Create a named function for the event listener
+      const mouseMoveHandler = () => {
+        if (activeVertexMarkerRef.current && window.tempVerticesRef && window.tempVerticesRef.length > 0) {
+          // Force update when mouse moves during active dragging
+          updateBannerInfo();
+        }
+      };
+      
+      // Add specific listener for active vertex dragging
+      document.addEventListener('mousemove', mouseMoveHandler);
+      
+      // Store the handler for cleanup
+      const handler = mouseMoveHandler;
     
     return () => {
       google.maps.event.removeListener(updateMapListener);
@@ -426,8 +479,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       if (polylineUpdateInterval) {
         clearInterval(polylineUpdateInterval);
       }
+        // Clean up the mousemove listener
+        document.removeEventListener('mousemove', handler);
+      };
+    }
+    
+    // Return cleanup function for non-editing mode
+    return () => {
+      google.maps.event.removeListener(updateMapListener);
+      google.maps.event.removeListener(dragStartListener);
+      google.maps.event.removeListener(dragListener);
+      google.maps.event.removeListener(dragEndListener);
+      if (polylineUpdateInterval) {
+        clearInterval(polylineUpdateInterval);
+      }
     };
-  }, [isDrawingMode, map, updateBannerInfo]);
+  }, [isDrawingMode, isSelectedPolygonEditable, map, updateBannerInfo]);
 
   // Add a function to clear all red markers - moved up to avoid reference before declaration
   const clearAllRedMarkers = useCallback(() => {
@@ -1908,6 +1975,35 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             }
             updateEdgeMarkers();
             
+            // Force immediate calculation and update during drag
+            if (window.tempVerticesRef && window.tempVerticesRef.length > 1) {
+              try {
+                let perimeter = 0;
+                for (let i = 0; i < window.tempVerticesRef.length; i++) {
+                  const p1 = window.tempVerticesRef[i];
+                  const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
+                  if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                    perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                  }
+                }
+                
+                let area = 0;
+                if (window.tempVerticesRef.length >= 3) {
+                  area = google.maps.geometry.spherical.computeArea(window.tempVerticesRef);
+                }
+                
+                if (perimeter > 0 || area > 0) {
+                  setBannerInfo({
+                    area: area / 10000, // Convert to hectares
+                    perimeter: perimeter / 1000, // Convert to kilometers
+                    vertices: window.tempVerticesRef.length
+                  });
+                }
+              } catch (error) {
+                console.error("Error during drag calculation:", error);
+              }
+            }
+            
             // Update banner info while dragging
             updateBannerInfo();
           });
@@ -2368,6 +2464,60 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const newEditable = !currentEditable;
       console.log("New editable state:", newEditable);
       
+      // Hide the selection panel (black transparent panel with field stats) when entering edit mode
+      if (newEditable) {
+        // Get the polygon path
+        const path = polygon.getPath();
+        const vertices: google.maps.LatLng[] = [];
+        
+        // Convert path to array of LatLng objects
+        for (let i = 0; i < path.getLength(); i++) {
+          vertices.push(path.getAt(i));
+        }
+        
+        // Set the temporary vertices reference for the banner to use
+        window.tempVerticesRef = vertices;
+        
+        // Calculate and update banner info
+        let perimeter = 0;
+        for (let i = 0; i < vertices.length; i++) {
+          const p1 = vertices[i];
+          const p2 = vertices[(i + 1) % vertices.length];
+          perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+        }
+        
+        let area = 0;
+        if (vertices.length >= 3) {
+          area = google.maps.geometry.spherical.computeArea(vertices);
+        }
+        
+        // Update the banner info
+        setBannerInfo({
+          area: area / 10000, // Convert to hectares
+          perimeter: perimeter / 1000, // Convert to kilometers
+          vertices: vertices.length
+        });
+        
+        // Temporarily hide the selectedFieldInfo to hide the panel
+        setSelectedFieldInfo(prevInfo => {
+          // Store the info internally so we can restore it later
+          polygon.set('savedFieldInfo', prevInfo);
+          return null;
+        });
+      } else {
+        // Clear the temporary vertices reference when exiting edit mode
+        window.tempVerticesRef = [];
+        
+        // Reset banner info
+        setBannerInfo({ area: 0, perimeter: 0, vertices: 0 });
+        
+        // Restore field info when exiting edit mode
+        const savedInfo = polygon.get('savedFieldInfo');
+        if (savedInfo) {
+          setSelectedFieldInfo(savedInfo);
+        }
+      }
+      
       // Important: Set the React state first
       setIsSelectedPolygonEditable(newEditable);
         
@@ -2456,6 +2606,50 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   // Update marker position
                   marker.setPosition(e.latLng);
                   
+                  // Update tempVerticesRef for real-time banner updates
+                  if (window.tempVerticesRef && Array.isArray(window.tempVerticesRef)) {
+                    // Convert path to array of LatLng objects
+                    const vertices: google.maps.LatLng[] = [];
+                    for (let i = 0; i < path.getLength(); i++) {
+                      vertices.push(path.getAt(i));
+                    }
+                    window.tempVerticesRef = vertices;
+                    
+                    // Direct calculation for immediate update during drag
+                    try {
+                      let perimeter = 0;
+                      for (let i = 0; i < vertices.length; i++) {
+                        const p1 = vertices[i];
+                        const p2 = vertices[(i + 1) % vertices.length];
+                        if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                          perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                        }
+                      }
+                      
+                      let area = 0;
+                      if (vertices.length >= 3) {
+                        const validVertices = vertices.every(
+                          vertex => vertex && typeof vertex.lat === 'function' && typeof vertex.lng === 'function'
+                        );
+                        
+                        if (validVertices) {
+                          area = google.maps.geometry.spherical.computeArea(vertices);
+                        }
+                      }
+                      
+                      // Immediate update in UI
+                      if (perimeter > 0 || area > 0) {
+                        setBannerInfo({
+                          area: area / 10000, // Convert to hectares
+                          perimeter: perimeter / 1000, // Convert to kilometers
+                          vertices: vertices.length
+                        });
+                      }
+                    } catch (error) {
+                      console.error("Error during drag calculation:", error);
+                    }
+                  }
+                  
                   // If there's an addEdgeMarkers function, call it
                   const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
                   if (typeof addEdgeMarkersFn === 'function') {
@@ -2476,6 +2670,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     // Make sure the path is updated with final position
                     path.setAt(idx, finalPosition);
                     marker.setPosition(finalPosition);
+                    
+                    // Update tempVerticesRef for real-time banner updates
+                    if (window.tempVerticesRef && Array.isArray(window.tempVerticesRef)) {
+                      // Convert path to array of LatLng objects
+                      const vertices: google.maps.LatLng[] = [];
+                      for (let i = 0; i < path.getLength(); i++) {
+                        vertices.push(path.getAt(i));
+                      }
+                      window.tempVerticesRef = vertices;
+                      
+                      // Use updateBannerInfo to calculate and update banner
+                      // This ensures values are consistently updated
+                      requestAnimationFrame(() => updateBannerInfo());
+                    }
                   }
                 }
                 
@@ -2590,6 +2798,35 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                    if (!e.latLng) return;
                    const index = edgeMarker.get('edgeIndex');
                    
+                   // Make sure we always capture movement and update values in real time
+                   if (activeVertexMarkerRef.current === edgeMarker) {
+                     // Force calculation with every mouse movement during drag
+                     try {
+                       if (window.tempVerticesRef && window.tempVerticesRef.length >= 3) {
+                         let perimeter = 0;
+                         for (let i = 0; i < window.tempVerticesRef.length; i++) {
+                           const p1 = window.tempVerticesRef[i];
+                           const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
+                           if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                             perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                           }
+                         }
+                         
+                         let area = google.maps.geometry.spherical.computeArea(window.tempVerticesRef);
+                         
+                         if (perimeter > 0 || area > 0) {
+                           setBannerInfo({
+                             area: area / 10000, // Convert to hectares
+                             perimeter: perimeter / 1000, // Convert to kilometers
+                             vertices: window.tempVerticesRef.length
+                           });
+                         }
+                       }
+                     } catch (error) {
+                       console.error("Error during edge drag calculation:", error);
+                     }
+                   }
+                   
                    // Store information about whether we've already inserted the vertex
                    const vertexInserted = edgeMarker.get('vertexInserted');
                    
@@ -2664,6 +2901,43 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                              
                              // Update edge markers
                              addEdgeMarkers();
+                             
+                             // Make sure the tempVerticesRef is updated for measurements
+                             if (window.tempVerticesRef && Array.isArray(window.tempVerticesRef)) {
+                               // Convert path to array of LatLng objects for real-time measurement
+                               const vertices: google.maps.LatLng[] = [];
+                               for (let i = 0; i < path.getLength(); i++) {
+                                 vertices.push(path.getAt(i));
+                               }
+                               window.tempVerticesRef = vertices;
+                               
+                               // Force immediate calculation during drag to prevent zeros
+                               try {
+                                 let perimeter = 0;
+                                 for (let i = 0; i < vertices.length; i++) {
+                                   const p1 = vertices[i];
+                                   const p2 = vertices[(i + 1) % vertices.length];
+                                   if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                                     perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                                   }
+                                 }
+                                 
+                                 let area = 0;
+                                 if (vertices.length >= 3) {
+                                   area = google.maps.geometry.spherical.computeArea(vertices);
+                                 }
+                                 
+                                 if (perimeter > 0 || area > 0) {
+                                   setBannerInfo({
+                                     area: area / 10000, // Convert to hectares
+                                     perimeter: perimeter / 1000, // Convert to kilometers
+                                     vertices: vertices.length
+                                   });
+                                 }
+                               } catch (error) {
+                                 console.error("Error during new vertex drag calculation:", error);
+                               }
+                             }
                            }
                          });
                          
@@ -2725,6 +2999,50 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                        
                        // Update edge markers to reflect new vertex position
                        addEdgeMarkers();
+                       
+                       // Update tempVerticesRef for real-time banner updates
+                       if (window.tempVerticesRef && Array.isArray(window.tempVerticesRef)) {
+                         // Convert path to array of LatLng objects
+                         const vertices: google.maps.LatLng[] = [];
+                         for (let i = 0; i < path.getLength(); i++) {
+                           vertices.push(path.getAt(i));
+                         }
+                         window.tempVerticesRef = vertices;
+                         
+                         // Direct calculation for immediate update during drag
+                         try {
+                           let perimeter = 0;
+                           for (let i = 0; i < vertices.length; i++) {
+                             const p1 = vertices[i];
+                             const p2 = vertices[(i + 1) % vertices.length];
+                             if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                               perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                             }
+                           }
+                           
+                           let area = 0;
+                           if (vertices.length >= 3) {
+                             const validVertices = vertices.every(
+                               vertex => vertex && typeof vertex.lat === 'function' && typeof vertex.lng === 'function'
+                             );
+                             
+                             if (validVertices) {
+                               area = google.maps.geometry.spherical.computeArea(vertices);
+                             }
+                           }
+                           
+                           // Immediate update in UI
+                           if (perimeter > 0 || area > 0) {
+                             setBannerInfo({
+                               area: area / 10000, // Convert to hectares
+                               perimeter: perimeter / 1000, // Convert to kilometers
+                               vertices: vertices.length
+                             });
+                           }
+                         } catch (error) {
+                           console.error("Error during edge drag calculation:", error);
+                         }
+                       }
                      }
                    }
                  });
@@ -2747,6 +3065,50 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                      if (insertedIndex < pathLength) {
                        const finalPosition = path.getAt(insertedIndex);
                        newVertexMarker.setPosition(finalPosition);
+                       
+                       // Update tempVerticesRef for final banner update
+                       if (window.tempVerticesRef && Array.isArray(window.tempVerticesRef)) {
+                         // Convert path to array of LatLng objects
+                         const vertices: google.maps.LatLng[] = [];
+                         for (let i = 0; i < path.getLength(); i++) {
+                           vertices.push(path.getAt(i));
+                         }
+                         window.tempVerticesRef = vertices;
+                         
+                         // Direct calculation for immediate update on drag end
+                         try {
+                           let perimeter = 0;
+                           for (let i = 0; i < vertices.length; i++) {
+                             const p1 = vertices[i];
+                             const p2 = vertices[(i + 1) % vertices.length];
+                             if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+                               perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                             }
+                           }
+                           
+                           let area = 0;
+                           if (vertices.length >= 3) {
+                             const validVertices = vertices.every(
+                               vertex => vertex && typeof vertex.lat === 'function' && typeof vertex.lng === 'function'
+                             );
+                             
+                             if (validVertices) {
+                               area = google.maps.geometry.spherical.computeArea(vertices);
+                             }
+                           }
+                           
+                           // Final update in UI on drag end
+                           if (perimeter > 0 || area > 0) {
+                             setBannerInfo({
+                               area: area / 10000, // Convert to hectares
+                               perimeter: perimeter / 1000, // Convert to kilometers
+                               vertices: vertices.length
+                             });
+                           }
+                         } catch (error) {
+                           console.error("Error during drag end calculation:", error);
+                         }
+                       }
                      }
                    }
                    
@@ -2799,10 +3161,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
           if (typeof addEdgeMarkersFn === 'function') {
             addEdgeMarkersFn();
-          }
+            }
           }
         } else {
-        console.log("Setting markers invisible");
+          console.log("Setting markers invisible");
           // Hide all markers
           vertexMarkers.forEach((marker: google.maps.Marker) => {
             marker.setMap(null);
@@ -2816,7 +3178,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           clearAllRedMarkers();
         }
     }
-  }, [fieldPolygons, selectedPolygonIndex, map, clearAllRedMarkers, defaultMarkerScale]);
+  }, [fieldPolygons, selectedPolygonIndex, map, clearAllRedMarkers, defaultMarkerScale, setBannerInfo]);
 
   const handleToggleDraggable = useCallback(() => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
@@ -2825,6 +3187,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Toggle draggable state
       const newDraggable = !currentDraggable;
+      
+      // Hide the selection panel (black transparent panel with field stats) when entering drag mode
+      if (newDraggable) {
+        // Temporarily hide the selectedFieldInfo to hide the panel
+        setSelectedFieldInfo(prevInfo => {
+          // Store the info internally so we can restore it later
+          polygon.set('savedFieldInfo', prevInfo);
+          return null;
+        });
+      } else {
+        // Restore field info when exiting drag mode
+        const savedInfo = polygon.get('savedFieldInfo');
+        if (savedInfo) {
+          setSelectedFieldInfo(savedInfo);
+        }
+      }
       
       // Set React state first
       setIsSelectedPolygonDraggable(newDraggable);
@@ -2839,7 +3217,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         polygon.setMap(map);
       }, 50);
     }
-  }, [fieldPolygons, selectedPolygonIndex]);
+  }, [fieldPolygons, selectedPolygonIndex, map]);
 
   const handleDeletePolygon = useCallback(() => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
@@ -4454,6 +4832,57 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     return () => clearTimeout(timeoutId);
   }, [map, fieldPolygons, setFieldPolygons]);
 
+  // Add effect with global mouse move tracking for continuous updates during drag
+  useEffect(() => {
+    if ((!isDrawingMode && !isSelectedPolygonEditable) || !map) return;
+
+    // Create a handler to update values on mouse move during active dragging
+    const mouseMoveHandler = (e: MouseEvent) => {
+      if (activeVertexMarkerRef.current && window.tempVerticesRef && window.tempVerticesRef.length > 1) {
+        // Direct calculation for immediate update during drag
+        try {
+          let perimeter = 0;
+          for (let i = 0; i < window.tempVerticesRef.length; i++) {
+            const p1 = window.tempVerticesRef[i];
+            const p2 = window.tempVerticesRef[(i + 1) % window.tempVerticesRef.length];
+            if (p1 && p2 && typeof p1.lat === 'function' && typeof p2.lat === 'function') {
+              perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+            }
+          }
+          
+          let area = 0;
+          if (window.tempVerticesRef.length >= 3) {
+            const validVertices = window.tempVerticesRef.every(
+              vertex => vertex && typeof vertex.lat === 'function' && typeof vertex.lng === 'function'
+            );
+            
+            if (validVertices) {
+              area = google.maps.geometry.spherical.computeArea(window.tempVerticesRef);
+            }
+          }
+          
+          // Immediate update in UI on every mouse move
+          if (perimeter > 0 || area > 0) {
+            setBannerInfo({
+              area: area / 10000, // Convert to hectares
+              perimeter: perimeter / 1000, // Convert to kilometers
+              vertices: window.tempVerticesRef.length
+            });
+          }
+        } catch (error) {
+          console.error("Error during mouse move calculation:", error);
+        }
+      }
+    };
+
+    // Add global event listener
+    document.addEventListener('mousemove', mouseMoveHandler);
+    
+    return () => {
+      document.removeEventListener('mousemove', mouseMoveHandler);
+    };
+  }, [isDrawingMode, isSelectedPolygonEditable, map, activeVertexMarkerRef]);
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -4556,15 +4985,42 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         <Navbar 
           onPlaceSelect={handlePlaceSelect} 
           isDrawingMode={isDrawingMode}
-          onCancelDrawing={handleCancelDrawing}
-          onFinishDrawing={handleFinishDrawing}
-          canFinishDrawing={window.tempVerticesRef && window.tempVerticesRef.length >= 3}
+          isEditingMode={isSelectedPolygonEditable}
+          onCancelDrawing={isDrawingMode ? handleCancelDrawing : handleToggleEditable}
+          onFinishDrawing={isDrawingMode ? handleFinishDrawing : handleToggleEditable}
+          canFinishDrawing={true}
         />
         
         <div style={mapStyles.container}>
           
           {/* Add the drawing mode banner */}
           {isDrawingMode && (
+            <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Area:</span>
+                  <span className="text-green-400 font-medium">
+                    {bannerInfo.area.toFixed(2)} ha
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Perimeter:</span>
+                  <span className="text-blue-400 font-medium">
+                    {bannerInfo.perimeter.toFixed(2)} km
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100">Vertices:</span>
+                  <span className="text-purple-400 font-medium">
+                    {bannerInfo.vertices}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Add the same banner for editing mode */}
+          {!isDrawingMode && isSelectedPolygonEditable && (
             <div className="absolute top-0 left-0 right-0 bg-black/50 shadow-lg z-20 p-2">
               <div className="container mx-auto flex justify-center items-center gap-6 text-sm">
                 <div className="flex items-center gap-2">
@@ -4825,78 +5281,87 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             </div>
           )}
 
-          {/* Drawing/editing controls banner */}
-          {(isDrawingMode || (selectedPolygonIndex !== null && isSelectedPolygonEditable)) && (
+          {/* Drawing controls banner */}
+          {isDrawingMode && (
             <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
               <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
                 {/* Left side: Cancel button */}
                 <div>
                   <button
-                    onClick={isDrawingMode ? handleCancelDrawing : handleToggleEditable}
+                    onClick={handleCancelDrawing}
                     className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
                   >
                     <FontAwesomeIcon icon={faTimes} />
                   </button>
                 </div>
                 
-                {/* Center: Undo/Redo buttons - only shown in drawing mode */}
+                {/* Center: Undo/Redo buttons */}
                 <div className="flex gap-2 justify-center">
-                  {isDrawingMode && (
-                    <>
-                      <button
-                        onClick={handleUndo}
-                        disabled={undoStack.length === 0}
-                        className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                          undoStack.length > 0
-                            ? "bg-blue-500 text-white hover:bg-blue-600"
-                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        }`}
-                        title="Undo"
-                      >
-                        <FontAwesomeIcon icon={faUndo} />
-                      </button>
-                      
-                      <button
-                        onClick={handleRedo}
-                        disabled={redoStack.length === 0}
-                        className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                          redoStack.length > 0
-                            ? "bg-blue-500 text-white hover:bg-blue-600"
-                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        }`}
-                        title="Redo"
-                      >
-                        <FontAwesomeIcon icon={faRedo} />
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      undoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title="Undo"
+                  >
+                    <FontAwesomeIcon icon={faUndo} />
+                  </button>
+                  
+                  <button
+                    onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      redoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Redo"
+              >
+                    <FontAwesomeIcon icon={faRedo} />
+              </button>
                 </div>
                 
                 {/* Right side: Save & Finish buttons */}
                 <div className="flex gap-2">
                   {/* Save button */}
                   <button
-                    onClick={handleSaveAllFields}
-                    className="flex items-center px-2 py-2 rounded-md shadow transition-colors bg-blue-500 text-white hover:bg-blue-600"
-                    title="Save Changes"
+                    onClick={() => {
+                      // When in drawing mode with active vertices, save the current drawing
+                      if (window.tempVerticesRef && window.tempVerticesRef.length >= 3) {
+                        handleFinishDrawing();
+                      } 
+                      // Otherwise save all existing fields
+                      else {
+                        handleSaveAllFields();
+                      }
+                    }}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      fieldPolygons.length === 0 && (!window.tempVerticesRef || window.tempVerticesRef.length < 3)
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-blue-500 text-white hover:bg-blue-600"
+                    }`}
+                    title={window.tempVerticesRef && window.tempVerticesRef.length >= 3 
+                      ? "Save Current Drawing" 
+                      : "Save All Fields"}
                   >
                     <FontAwesomeIcon icon={faFileImport} />
                   </button>
                   
-                  {/* Finish button - only shown in drawing mode */}
-                  {isDrawingMode && (
-                    <button
-                      onClick={handleFinishDrawing}
-                      disabled={window.tempVerticesRef.length < 3}
-                      className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
-                        window.tempVerticesRef.length >= 3
-                          ? "bg-green-500 text-white hover:bg-green-600"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                    >
-                      <FontAwesomeIcon icon={faCheck} />
-                    </button>
-                  )}
+                  {/* Finish button */}
+                  <button
+                    onClick={handleFinishDrawing}
+                    disabled={window.tempVerticesRef.length < 3}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      window.tempVerticesRef.length >= 3
+                        ? "bg-green-500 text-white hover:bg-green-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faCheck} />
+                  </button>
                 </div>
               </div>
             </div>
