@@ -2420,6 +2420,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         // Store the current polygon path in the window.tempVerticesRef for undo/redo operations
         window.tempVerticesRef = currentPath;
         
+        // Add path change listener for real-time updates
+        const pathListener = google.maps.event.addListener(path, 'set_at', () => {
+          updateFieldInfoRealTime(polygon);
+        });
+        
+        // Add another listener for insert_at events (when vertices are added)
+        const insertListener = google.maps.event.addListener(path, 'insert_at', () => {
+          updateFieldInfoRealTime(polygon);
+        });
+        
+        // Add another listener for remove_at events (when vertices are removed)
+        const removeListener = google.maps.event.addListener(path, 'remove_at', () => {
+          updateFieldInfoRealTime(polygon);
+        });
+        
+        // Store listeners for cleanup
+        polygon.set('pathListeners', [pathListener, insertListener, removeListener]);
+        
       } else {
         // When exiting edit mode, restore the original field info from before editing
         const savedInfo = polygon.get('savedFieldInfo');
@@ -2432,16 +2450,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         setRedoStack([]);
         setCanUndo(false);
         setCanRedo(false);
+        
+        // Remove path change listeners
+        const pathListeners = polygon.get('pathListeners') || [];
+        pathListeners.forEach((listener: google.maps.MapsEventListener) => {
+          google.maps.event.removeListener(listener);
+        });
       }
         
-        // Show/hide markers based on editable state
-        const vertexMarkers = polygon.get('vertexMarkers') || [];
-        const edgeMarkers = polygon.get('edgeMarkers') || [];
-    
+      // Show/hide markers based on editable state
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      const edgeMarkers = polygon.get('edgeMarkers') || [];
+  
       console.log("Number of vertex markers:", vertexMarkers.length);
       console.log("Number of edge markers:", edgeMarkers.length);
         
-        if (newEditable) {
+      if (newEditable) {
         console.log("Setting markers visible");
         
         // Create vertex markers if they don't exist
@@ -2524,6 +2548,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   if (typeof addEdgeMarkersFn === 'function') {
                     addEdgeMarkersFn();
                   }
+                  
+                  // Update field info in real-time during drag
+                  updateFieldInfoRealTime(polygon);
                 }
               });
               
@@ -2970,9 +2997,57 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         // Add the polygon back to the map with the new draggable state
         polygon.setDraggable(newDraggable);
         polygon.setMap(map);
+        
+        // Add event listeners for real-time updates if draggable
+        if (newDraggable) {
+          // Add listener for drag events
+          const dragListener = google.maps.event.addListener(polygon, 'drag', () => {
+            updateFieldInfoRealTime(polygon);
+          });
+          
+          // Store listener reference for cleanup
+          polygon.set('dragListener', dragListener);
+        } else {
+          // Remove listeners when disabling drag
+          const dragListener = polygon.get('dragListener');
+          if (dragListener) {
+            google.maps.event.removeListener(dragListener);
+          }
+        }
       }, 50);
     }
   }, [fieldPolygons, selectedPolygonIndex, map, selectedFieldInfo]);
+
+  // Add a function to update field info in real-time during edits and drags
+  const updateFieldInfoRealTime = useCallback((polygon: google.maps.Polygon) => {
+    if (!polygon) return;
+    
+    const path = polygon.getPath();
+    if (!path) return;
+    
+    // Calculate area
+    const area = google.maps.geometry.spherical.computeArea(path);
+    const areaInHectares = area / 10000; // Convert to hectares
+    
+    // Calculate perimeter
+    let perimeter = 0;
+    for (let i = 0; i < path.getLength(); i++) {
+      const p1 = path.getAt(i);
+      const p2 = path.getAt((i + 1) % path.getLength());
+      perimeter += google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+    }
+    const perimeterInKm = perimeter / 1000; // Convert to kilometers
+    
+    // Update the field info
+    setSelectedFieldInfo(prevInfo => {
+      if (!prevInfo) return null;
+      return {
+        ...prevInfo,
+        area: areaInHectares,
+        perimeter: perimeterInKm
+      };
+    });
+  }, []);
 
   const handleDeletePolygon = useCallback(() => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
