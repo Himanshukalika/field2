@@ -2403,12 +2403,35 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             name: polygon.get('fieldName') || 'Area'
           });
         }, 50);
+        
+        // Initialize undo/redo stacks for edit mode
+        // Store the current path in a format that can be used for undo/redo
+        const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+        
+        // Save the initial state to the polygon for reference
+        polygon.set('initialPath', currentPath);
+        
+        // Reset undo/redo stacks when entering edit mode
+        setUndoStack([currentPath]);
+        setRedoStack([]);
+        setCanUndo(false);
+        setCanRedo(false);
+        
+        // Store the current polygon path in the window.tempVerticesRef for undo/redo operations
+        window.tempVerticesRef = currentPath;
+        
       } else {
         // When exiting edit mode, restore the original field info from before editing
         const savedInfo = polygon.get('savedFieldInfo');
         if (savedInfo) {
           setSelectedFieldInfo(savedInfo);
         }
+        
+        // Clear the undo/redo stacks when exiting edit mode
+        setUndoStack([]);
+        setRedoStack([]);
+        setCanUndo(false);
+        setCanRedo(false);
       }
         
         // Show/hide markers based on editable state
@@ -2518,6 +2541,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     marker.setPosition(finalPosition);
                   }
                 }
+                
+                // Save current state to undo stack for edit mode
+                const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+                setUndoStack(prev => [...prev, currentPath]);
+                setRedoStack([]);
+                setCanUndo(true);
+                setCanRedo(false);
+                
+                // Update window.tempVerticesRef for undo/redo operations
+                window.tempVerticesRef = currentPath;
                 
                 // Clean up drag marker
                 if (dragMarker) {
@@ -2709,6 +2742,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                          
                          // Add dragend listener
                          markerDragMarker.addListener('dragend', () => {
+                           // Save current state to undo stack
+                           const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+                           setUndoStack(prev => [...prev, currentPath]);
+                           setRedoStack([]);
+                           setCanUndo(true);
+                           setCanRedo(false);
+                           
+                           // Update window.tempVerticesRef for undo/redo operations
+                           window.tempVerticesRef = currentPath;
+                           
                            // Clean up drag marker
                            if (markerDragMarker) {
                              markerDragMarker.setMap(null);
@@ -2772,6 +2815,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                                  // Cleanup on dragend
                  dragMarker.addListener('dragend', () => {
                    console.log("Edge marker drag complete");
+                   
+                   // Save current state to undo stack
+                   const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+                   setUndoStack(prev => [...prev, currentPath]);
+                   setRedoStack([]);
+                   setCanUndo(true);
+                   setCanRedo(false);
+                   
+                   // Update window.tempVerticesRef for undo/redo operations
+                   window.tempVerticesRef = currentPath;
                    
                    // Get the newly created vertex marker
                    const newVertexMarker = edgeMarker.get('newVertexMarker');
@@ -2840,8 +2893,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           if (typeof addEdgeMarkersFn === 'function') {
             addEdgeMarkersFn();
           }
-          }
-        } else {
+        }
+          } else {
         console.log("Setting markers invisible");
           // Hide all markers
           vertexMarkers.forEach((marker: google.maps.Marker) => {
@@ -2856,7 +2909,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           clearAllRedMarkers();
         }
     }
-  }, [fieldPolygons, selectedPolygonIndex, map, clearAllRedMarkers, defaultMarkerScale]);
+  }, [fieldPolygons, selectedPolygonIndex, map, clearAllRedMarkers, defaultMarkerScale, selectedFieldInfo]);
 
   const handleToggleDraggable = useCallback(() => {
     if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
@@ -3377,113 +3430,187 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
   // Add the handleUndo function  
   const handleUndo = useCallback(() => {
-                  // Skip all state checks and directly execute handler with synchronous action
-                  if (window.tempVerticesRef && undoStack.length > 0) {
-                    // Immediately apply undo without waiting for state updates
-                    const prevVertices = undoStack[undoStack.length - 1];
-                    
-                    // Store current state in redo array
-                    const currentVertices = [...window.tempVerticesRef];
-                    const newRedoStack = [...redoStack, currentVertices];
-                    
-                    // Update global vertices directly
-                    window.tempVerticesRef = [...prevVertices];
-                    
-                    // Update polyline directly without waiting for state to update
-                    if (window.tempPolylineRef) {
-                      const path = prevVertices.slice();
-                      if (prevVertices.length >= 3) {
-                        path.push(prevVertices[0]);
-                      }
-                      window.tempPolylineRef.setPath(path);
-                    }
-                    
-                    // Clear current markers
-                    if (window.tempMarkersRef) {
-                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
-                      window.tempMarkersRef = [];
-                    }
-                    
-                    // Clear current edge markers
-                    if (window.tempEdgeMarkersRef) {
-                      window.tempEdgeMarkersRef.forEach(marker => {
-                        if (marker) {
-                          marker.setMap(null);
-                        }
-                      });
-                      window.tempEdgeMarkersRef = [];
-                    }
-                    
-                    // Create new markers immediately
-                    if (map && prevVertices.length > 0) {
-                      prevVertices.forEach((vertex, index) => {
-                        createVertexMarker(vertex, index, map);
-                      });
-                    }
-                    
-                    // Update the stacks only after visual changes are complete
-                    setUndoStack(undoStack.slice(0, -1));
-                    setRedoStack(newRedoStack);
-                    
-                    // Recreate edge markers
-                    updateEdgeMarkers();
-                  }
-  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
+    // Handle undo for drawing mode
+    if (isDrawingMode && window.tempVerticesRef && undoStack.length > 0) {
+      // Immediately apply undo without waiting for state updates
+      const prevVertices = undoStack[undoStack.length - 1];
+      
+      // Store current state in redo array
+      const currentVertices = [...window.tempVerticesRef];
+      const newRedoStack = [...redoStack, currentVertices];
+      
+      // Update global vertices directly
+      window.tempVerticesRef = [...prevVertices];
+      
+      // Update polyline directly without waiting for state to update
+      if (window.tempPolylineRef) {
+        const path = prevVertices.slice();
+        if (prevVertices.length >= 3) {
+          path.push(prevVertices[0]);
+        }
+        window.tempPolylineRef.setPath(path);
+      }
+      
+      // Clear current markers
+      if (window.tempMarkersRef) {
+        window.tempMarkersRef.forEach(marker => marker.setMap(null));
+        window.tempMarkersRef = [];
+      }
+      
+      // Clear current edge markers
+      if (window.tempEdgeMarkersRef) {
+        window.tempEdgeMarkersRef.forEach(marker => {
+          if (marker) {
+            marker.setMap(null);
+          }
+        });
+        window.tempEdgeMarkersRef = [];
+      }
+      
+      // Create new markers immediately
+      if (map && prevVertices.length > 0) {
+        prevVertices.forEach((vertex, index) => {
+          createVertexMarker(vertex, index, map);
+        });
+      }
+      
+      // Update the stacks only after visual changes are complete
+      setUndoStack(undoStack.slice(0, -1));
+      setRedoStack(newRedoStack);
+      
+      // Recreate edge markers
+      updateEdgeMarkers();
+    }
+    // Handle undo for edit mode
+    else if (isSelectedPolygonEditable && selectedPolygonIndex !== null && undoStack.length > 0) {
+      const prevVertices = undoStack[undoStack.length - 1];
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      const path = polygon.getPath();
+      
+      // Store current state in redo stack
+      const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+      setRedoStack(prev => [...prev, currentPath]);
+      
+      // Apply the previous state to the polygon path
+      const newPath = new google.maps.MVCArray();
+      prevVertices.forEach(vertex => newPath.push(vertex));
+      polygon.setPath(newPath);
+      
+      // Update window.tempVerticesRef for consistency
+      window.tempVerticesRef = prevVertices;
+      
+      // Update the vertex markers positions
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      vertexMarkers.forEach((marker: google.maps.Marker, index: number) => {
+        if (index < prevVertices.length) {
+          marker.setPosition(prevVertices[index]);
+        }
+      });
+      
+      // Update edge markers
+      const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
+      if (typeof addEdgeMarkersFn === 'function') {
+        addEdgeMarkersFn();
+      }
+      
+      // Update the undo stack
+      setUndoStack(undoStack.slice(0, -1));
+      setCanUndo(undoStack.length > 1);
+      setCanRedo(true);
+    }
+  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers, isDrawingMode, isSelectedPolygonEditable, selectedPolygonIndex, fieldPolygons]);
 
   // Add the handleRedo function
   const handleRedo = useCallback(() => {
-                  // Skip all state checks and directly execute handler with synchronous action
-                  if (window.tempVerticesRef && redoStack.length > 0) {
-                    // Immediately apply redo without waiting for state updates
-                    const nextVertices = redoStack[redoStack.length - 1];
-                    
-                    // Store current state in undo array
-                    const currentVertices = [...window.tempVerticesRef];
-                    const newUndoStack = [...undoStack, currentVertices];
-                    
-                    // Update global vertices directly
-                    window.tempVerticesRef = [...nextVertices];
-                    
-                    // Update polyline directly without waiting for state to update
-                    if (window.tempPolylineRef) {
-                      const path = nextVertices.slice();
-                      if (nextVertices.length >= 3) {
-                        path.push(nextVertices[0]);
-                      }
-                      window.tempPolylineRef.setPath(path);
-                    }
-                    
-                    // Clear current markers
-                    if (window.tempMarkersRef) {
-                      window.tempMarkersRef.forEach(marker => marker.setMap(null));
-                      window.tempMarkersRef = [];
-                    }
-                    
-                    // Clear current edge markers
-                    if (window.tempEdgeMarkersRef) {
-                      window.tempEdgeMarkersRef.forEach(marker => {
-                        if (marker) {
-                          marker.setMap(null);
-                        }
-                      });
-                      window.tempEdgeMarkersRef = [];
-                    }
-                    
-                    // Create new markers immediately
-                    if (map && nextVertices.length > 0) {
-                      nextVertices.forEach((vertex, index) => {
-                        createVertexMarker(vertex, index, map);
-                      });
-                    }
-                    
-                    // Update the stacks only after visual changes are complete
-                    setUndoStack(newUndoStack);
-                    setRedoStack(redoStack.slice(0, -1));
-                    
-                    // Recreate edge markers
-                    updateEdgeMarkers();
-                  }
-  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers]);
+    // Handle redo for drawing mode
+    if (isDrawingMode && window.tempVerticesRef && redoStack.length > 0) {
+      // Immediately apply redo without waiting for state updates
+      const nextVertices = redoStack[redoStack.length - 1];
+      
+      // Store current state in undo array
+      const currentVertices = [...window.tempVerticesRef];
+      const newUndoStack = [...undoStack, currentVertices];
+      
+      // Update global vertices directly
+      window.tempVerticesRef = [...nextVertices];
+      
+      // Update polyline directly without waiting for state to update
+      if (window.tempPolylineRef) {
+        const path = nextVertices.slice();
+        if (nextVertices.length >= 3) {
+          path.push(nextVertices[0]);
+        }
+        window.tempPolylineRef.setPath(path);
+      }
+      
+      // Clear current markers
+      if (window.tempMarkersRef) {
+        window.tempMarkersRef.forEach(marker => marker.setMap(null));
+        window.tempMarkersRef = [];
+      }
+      
+      // Clear current edge markers
+      if (window.tempEdgeMarkersRef) {
+        window.tempEdgeMarkersRef.forEach(marker => {
+          if (marker) {
+            marker.setMap(null);
+          }
+        });
+        window.tempEdgeMarkersRef = [];
+      }
+      
+      // Create new markers immediately
+      if (map && nextVertices.length > 0) {
+        nextVertices.forEach((vertex, index) => {
+          createVertexMarker(vertex, index, map);
+        });
+      }
+      
+      // Update the stacks only after visual changes are complete
+      setUndoStack(newUndoStack);
+      setRedoStack(redoStack.slice(0, -1));
+      
+      // Recreate edge markers
+      updateEdgeMarkers();
+    }
+    // Handle redo for edit mode
+    else if (isSelectedPolygonEditable && selectedPolygonIndex !== null && redoStack.length > 0) {
+      const nextVertices = redoStack[redoStack.length - 1];
+      const polygon = fieldPolygons[selectedPolygonIndex];
+      const path = polygon.getPath();
+      
+      // Store current state in undo stack
+      const currentPath = Array.from({ length: path.getLength() }, (_, i) => path.getAt(i));
+      setUndoStack(prev => [...prev, currentPath]);
+      
+      // Apply the next state to the polygon path
+      const newPath = new google.maps.MVCArray();
+      nextVertices.forEach(vertex => newPath.push(vertex));
+      polygon.setPath(newPath);
+      
+      // Update window.tempVerticesRef for consistency
+      window.tempVerticesRef = nextVertices;
+      
+      // Update the vertex markers positions
+      const vertexMarkers = polygon.get('vertexMarkers') || [];
+      vertexMarkers.forEach((marker: google.maps.Marker, index: number) => {
+        if (index < nextVertices.length) {
+          marker.setPosition(nextVertices[index]);
+        }
+      });
+      
+      // Update edge markers
+      const addEdgeMarkersFn = polygon.get('addEdgeMarkers');
+      if (typeof addEdgeMarkersFn === 'function') {
+        addEdgeMarkersFn();
+      }
+      
+      // Update the redo stack
+      setRedoStack(redoStack.slice(0, -1));
+      setCanUndo(true);
+      setCanRedo(redoStack.length > 1);
+    }
+  }, [createVertexMarker, map, redoStack, undoStack, updateEdgeMarkers, isDrawingMode, isSelectedPolygonEditable, selectedPolygonIndex, fieldPolygons]);
 
   // Add handler for adding field images
   const handleAddFieldImage = useCallback(async (fieldIndex: number, file: File) => {
@@ -5092,7 +5219,61 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             </div>
           )}
 
-          {/* Field editing controls banner - removed as requested */}
+          {/* Edit mode controls banner - similar to drawing mode banner */}
+          {!isDrawingMode && selectedFieldInfo && isSelectedPolygonEditable && (
+            <div className="fixed bottom-0 left-0 right-0 bg-black/80 shadow-lg z-50 p-2 w-full block">
+              <div className="flex justify-between items-center max-w-full px-1 sm:px-2 mx-2">
+                {/* Left side: Cancel button */}
+                <div>
+                  <button
+                    onClick={handleExitEditMode}
+                    className="flex items-center gap-1 px-2 py-2 bg-red-500 text-white rounded-md shadow hover:bg-red-600 transition-colors"
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
+                </div>
+                
+                {/* Center: Undo/Redo buttons */}
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      undoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title="Undo"
+                  >
+                    <FontAwesomeIcon icon={faUndo} />
+                  </button>
+                  
+                  <button
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    className={`flex items-center px-2 py-2 rounded-md shadow transition-colors ${
+                      redoStack.length > 0
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title="Redo"
+                  >
+                    <FontAwesomeIcon icon={faRedo} />
+                  </button>
+                </div>
+                
+                {/* Right side: Save button */}
+                <div>
+                  <button
+                    onClick={handleSaveAndExitEditMode}
+                    className="flex items-center gap-1 px-2 py-2 bg-green-500 text-white rounded-md shadow hover:bg-green-600 transition-colors"
+                  >
+                    <FontAwesomeIcon icon={faCheck} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
 
