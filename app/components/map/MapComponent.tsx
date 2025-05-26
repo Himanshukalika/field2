@@ -5250,6 +5250,59 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               </button>
             </div>
           )}
+          
+          {/* Add field image button when field is selected */}
+          {selectedPolygonIndex !== null && !isSelectedPolygonEditable && !isSelectedPolygonDraggable && (
+            <div className="absolute bottom-4 left-4 z-10">
+              <button
+                onClick={() => setShowPolygonTools(true)}
+                className="p-2 transition-all"
+                title="Field Images"
+              >
+                <svg 
+                  width="56" 
+                  height="56" 
+                  viewBox="0 0 512 512" 
+                  fill="#8B0000" 
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path d="M448 80c8.8 0 16 7.2 16 16V415.8L333.8 304.6c-7.8-7.8-20.5-7.8-28.3 0L176 433.9 74.7 332.6c-7.8-7.8-20.5-7.8-28.3 0L16 362.7V96c0-8.8 7.2-16 16-16H448zM64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zm80 192a48 48 0 1 0 0-96 48 48 0 1 0 0 96z"/>
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Image preview panel at bottom when field is selected and has images */}
+          {selectedPolygonIndex !== null && 
+           !isSelectedPolygonEditable && 
+           !isSelectedPolygonDraggable && 
+           fieldImages[selectedPolygonIndex] && 
+           fieldImages[selectedPolygonIndex].images && 
+           fieldImages[selectedPolygonIndex].images.length > 0 && (
+            <div className="fixed bottom-0 left-0 right-0 bg-black/70 p-3 z-10 flex items-center">
+              <div className="flex-1 flex gap-3 overflow-x-auto">
+                {fieldImages[selectedPolygonIndex].images.map((imageUrl, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`relative flex-shrink-0 ${idx === fieldImages[selectedPolygonIndex].mainImageIndex ? 'ring-2 ring-green-500' : ''}`}
+                    onClick={() => handleSetMainImage(selectedPolygonIndex, idx)}
+                  >
+                    <img 
+                      src={imageUrl} 
+                      alt={`Field image ${idx + 1}`}
+                      className="h-20 w-auto object-cover rounded"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button 
+                onClick={() => setShowPolygonTools(true)}
+                className="ml-3 bg-green-600 text-white p-2 rounded hover:bg-green-700 flex-shrink-0"
+              >
+                <FontAwesomeIcon icon={faPlus} />
+              </button>
+            </div>
+          )}
 
           {/* Add the PolygonToolsMenu component */}
           <PolygonToolsMenu 
