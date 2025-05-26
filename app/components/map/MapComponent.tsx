@@ -2231,8 +2231,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const handlePolygonClick = useCallback((index: number) => {
     if (isDrawingMode) return;
     
+    console.log("Polygon clicked:", index);
+    
+    // First, reset all polygons to their default styling
+    fieldPolygons.forEach((poly, polyIndex) => {
+      if (polyIndex !== index) {
+        poly.setOptions({
+          strokeWeight: poly.get('strokeWeight') || strokeWeight,
+          zIndex: polyIndex + 10
+        });
+      }
+    });
+    
     // Toggle selection if clicking the same polygon
     if (selectedPolygonIndex === index) {
+      console.log("Deselecting polygon:", index);
+      
       // Get the current polygon to reset its styling
       const polygon = fieldPolygons[index];
       
@@ -2251,7 +2265,28 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       // Reset editable/draggable state
       setIsSelectedPolygonEditable(false);
       setIsSelectedPolygonDraggable(false);
+      
+      // Make sure to reset any active editing state
+      polygon.setEditable(false);
+      polygon.setDraggable(false);
     } else {
+      console.log("Selecting polygon:", index);
+      
+      // First, make sure any previously selected polygon is reset
+      if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
+        const prevPolygon = fieldPolygons[selectedPolygonIndex];
+        
+        // Reset its styling and state
+        prevPolygon.setOptions({
+          strokeWeight: prevPolygon.get('strokeWeight') || strokeWeight,
+          zIndex: selectedPolygonIndex + 10
+        });
+        
+        // Ensure it's not editable or draggable
+        prevPolygon.setEditable(false);
+        prevPolygon.setDraggable(false);
+      }
+      
       // Select the new polygon
       setSelectedPolygonIndex(index);
       
@@ -3054,6 +3089,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       // Get the polygon to delete
       const polygon = fieldPolygons[selectedPolygonIndex];
       
+      // Get the field ID if it exists
+      const fieldId = polygon.get('fieldId');
+      
       // Clean up any markers associated with this polygon
       const vertexMarkers = polygon.get('vertexMarkers') || [];
       vertexMarkers.forEach((marker: google.maps.Marker) => {
@@ -3088,8 +3126,37 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Clear selected field info
       setSelectedFieldInfo(null);
+      
+      // Delete from Firebase if we have a field ID and the user is logged in
+      if (fieldId && user) {
+        // Delete the field from Firebase
+        deleteField(fieldId).then(() => {
+          console.log(`Field ${fieldId} deleted from database`);
+          
+          // Also remove from loaded fields if it exists there
+          setLoadedFields(prev => prev.filter(field => field.id !== fieldId));
+          
+          // Show success notification
+          const notificationElement = document.getElementById('save-notification');
+          const notificationTextElement = document.getElementById('save-notification-text');
+          if (notificationElement && notificationTextElement) {
+            notificationTextElement.textContent = 'Field deleted successfully';
+            notificationElement.style.display = 'block';
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+              notificationElement.style.display = 'none';
+            }, 3000);
+          }
+        }).catch(error => {
+          console.error('Error deleting field from database:', error);
+          
+          // Show error notification
+          alert('Error deleting field from database. The field may reappear after refresh.');
+        });
+      }
     }
-  }, [fieldPolygons, selectedPolygonIndex]);
+  }, [fieldPolygons, selectedPolygonIndex, user, setLoadedFields]);
 
   // Add a function to handle finishing the drawing and auto-save
   const handleFinishDrawing = useCallback(() => {
