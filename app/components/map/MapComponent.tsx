@@ -2250,9 +2250,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       // Get the current polygon to reset its styling
       const polygon = fieldPolygons[index];
       
-      // Reset the polygon's visual styling
+      // Store the original styling values from the polygon or use defaults
+      const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+      
+      // Reset the polygon's visual styling to original values
       polygon.setOptions({
-        strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+        strokeWeight: originalStrokeWeight,
         zIndex: index + 10
       });
       
@@ -2292,6 +2295,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Get the styling properties from the clicked polygon
       const polygon = fieldPolygons[index];
+      
+      // Store the original stroke weight before highlighting
+      const currentStrokeWeight = polygon.get('strokeWeight') || strokeWeight;
+      polygon.set('originalStrokeWeight', currentStrokeWeight);
       
       // Make the selected polygon stand out visually
       polygon.setOptions({
@@ -4602,13 +4609,42 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           });
         }
       }
+      
+      // Also deselect any selected field when clicking on the map
+      if (selectedPolygonIndex !== null && !isDrawingMode) {
+        // Get the current polygon to reset its styling
+        const polygon = fieldPolygons[selectedPolygonIndex];
+        
+        // Store the original styling values from the polygon or use defaults
+        const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+        const originalZIndex = polygon.get('originalZIndex') || (selectedPolygonIndex + 10);
+        
+        // Reset the polygon's visual styling to original values
+        polygon.setOptions({
+          strokeWeight: originalStrokeWeight,
+          zIndex: originalZIndex
+        });
+        
+        // Ensure complete cleanup of selection state
+        setSelectedPolygonIndex(null);
+        setShowPolygonTools(false);
+        setSelectedFieldInfo(null);
+        setIsSelectedPolygonEditable(false);
+        setIsSelectedPolygonDraggable(false);
+        
+        // Make sure to reset any active editing state
+        polygon.setEditable(false);
+        polygon.setDraggable(false);
+        
+        console.log("Field deselected by map click");
+      }
     });
     
     // Clean up the listener when the component unmounts
     return () => {
       google.maps.event.removeListener(clickListener);
     };
-  }, [map, selectedMeasurement, measureDistanceMode, clearSelectedMeasurement, measurementPolylines, measurementPolygons]);
+  }, [map, selectedMeasurement, measureDistanceMode, clearSelectedMeasurement, measurementPolylines, measurementPolygons, selectedPolygonIndex, isDrawingMode, fieldPolygons, strokeWeight]);
 
   // Add function to toggle distance measurement editable state
   const handleToggleDistanceEditable = useCallback(() => {
@@ -4849,6 +4885,35 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       handleExitEditMode();
     }
   }, [handleSaveAllFields, handleExitEditMode]);
+
+  // Add click handlers to all field polygons
+  useEffect(() => {
+    if (!map) return;
+    
+    // Add click handlers to all polygons
+    fieldPolygons.forEach((polygon, index) => {
+      // Remove any existing click listeners to prevent duplicates
+      google.maps.event.clearListeners(polygon, 'click');
+      
+      // Add new click listener
+      polygon.addListener('click', (e: google.maps.PolyMouseEvent) => {
+        // Stop propagation to prevent map click
+        if (e.domEvent) {
+          e.domEvent.stopPropagation();
+        }
+        
+        // Call our handlePolygonClick function with this polygon's index
+        handlePolygonClick(index);
+      });
+    });
+    
+    // Clean up listeners when component unmounts
+    return () => {
+      fieldPolygons.forEach(polygon => {
+        google.maps.event.clearListeners(polygon, 'click');
+      });
+    };
+  }, [fieldPolygons, map, handlePolygonClick]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
