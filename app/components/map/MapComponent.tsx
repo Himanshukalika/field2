@@ -2279,9 +2279,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       if (selectedPolygonIndex !== null && selectedPolygonIndex < fieldPolygons.length) {
         const prevPolygon = fieldPolygons[selectedPolygonIndex];
         
+        // Get the original stroke weight for the previously selected polygon
+        const originalStrokeWeight = prevPolygon.get('originalStrokeWeight') || strokeWeight;
+        
         // Reset its styling and state
         prevPolygon.setOptions({
-          strokeWeight: prevPolygon.get('strokeWeight') || strokeWeight,
+          strokeWeight: originalStrokeWeight,
           zIndex: selectedPolygonIndex + 10
         });
         
@@ -2387,6 +2390,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const polygon = fieldPolygons[selectedPolygonIndex];
       const currentEditable = polygon.getEditable();
       
+      // Get the original stroke weight before entering edit mode
+      const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+      
       // First hide all vertex/edge markers for all polygons
       fieldPolygons.forEach((poly, index) => {
         if (index !== selectedPolygonIndex) {
@@ -2412,6 +2418,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Important: Set the React state first
       setIsSelectedPolygonEditable(newEditable);
+      
+      // Reset the polygon's stroke weight to its original value when entering edit mode
+      if (newEditable) {
+        polygon.setOptions({
+          strokeWeight: originalStrokeWeight
+        });
+      }
       
       // When entering edit mode, hide the selection panel with Edit/Move buttons
       // by temporarily removing the selectedFieldInfo
@@ -2486,6 +2499,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         if (savedInfo) {
           setSelectedFieldInfo(savedInfo);
         }
+        
+        // Make the selected polygon stand out visually again
+        polygon.setOptions({
+          strokeWeight: 4,
+          zIndex: 1000
+        });
         
         // Clear the undo/redo stacks when exiting edit mode
         setUndoStack([]);
@@ -2985,11 +3004,21 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       const polygon = fieldPolygons[selectedPolygonIndex];
       const currentDraggable = polygon.getDraggable();
       
+      // Get the original stroke weight before entering drag mode
+      const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+      
       // Toggle draggable state
       const newDraggable = !currentDraggable;
       
       // Set React state first
       setIsSelectedPolygonDraggable(newDraggable);
+      
+      // Reset the polygon's stroke weight to its original value when entering drag mode
+      if (newDraggable) {
+        polygon.setOptions({
+          strokeWeight: originalStrokeWeight
+        });
+      }
       
       // When entering drag mode, hide the selection panel with Edit/Move buttons
       // by temporarily removing the selectedFieldInfo
@@ -3029,6 +3058,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         if (savedInfo) {
           setSelectedFieldInfo(savedInfo);
         }
+        
+        // Make the selected polygon stand out visually again
+        polygon.setOptions({
+          strokeWeight: 4,
+          zIndex: 1000
+        });
       }
       
       // Make sure to temporarily hide this polygon to avoid flashing
@@ -4611,7 +4646,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       }
       
       // Also deselect any selected field when clicking on the map
-      if (selectedPolygonIndex !== null && !isDrawingMode) {
+      // But only if we're not in edit mode or drag mode
+      if (selectedPolygonIndex !== null && !isDrawingMode && !isSelectedPolygonEditable && !isSelectedPolygonDraggable) {
         // Get the current polygon to reset its styling
         const polygon = fieldPolygons[selectedPolygonIndex];
         
@@ -4644,7 +4680,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     return () => {
       google.maps.event.removeListener(clickListener);
     };
-  }, [map, selectedMeasurement, measureDistanceMode, clearSelectedMeasurement, measurementPolylines, measurementPolygons, selectedPolygonIndex, isDrawingMode, fieldPolygons, strokeWeight]);
+  }, [map, selectedMeasurement, measureDistanceMode, clearSelectedMeasurement, measurementPolylines, measurementPolygons, selectedPolygonIndex, isDrawingMode, fieldPolygons, strokeWeight, isSelectedPolygonEditable, isSelectedPolygonDraggable]);
 
   // Add function to toggle distance measurement editable state
   const handleToggleDistanceEditable = useCallback(() => {
@@ -4902,6 +4938,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           e.domEvent.stopPropagation();
         }
         
+        // Don't trigger selection/deselection if we're in edit mode for this polygon
+        if (selectedPolygonIndex === index && (isSelectedPolygonEditable || isSelectedPolygonDraggable)) {
+          // In edit mode, we just want to let the default Google Maps behavior work
+          return;
+        }
+        
         // Call our handlePolygonClick function with this polygon's index
         handlePolygonClick(index);
       });
@@ -4913,7 +4955,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         google.maps.event.clearListeners(polygon, 'click');
       });
     };
-  }, [fieldPolygons, map, handlePolygonClick]);
+  }, [fieldPolygons, map, handlePolygonClick, selectedPolygonIndex, isSelectedPolygonEditable, isSelectedPolygonDraggable]);
 
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
