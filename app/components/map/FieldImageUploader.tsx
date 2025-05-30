@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faImage, faUpload, faTrash, faTimes, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { faUpload, faTrash, faTimes, faPlus } from '@fortawesome/free-solid-svg-icons';
 
 interface FieldImageUploaderProps {
   onImageUpload: (image: File) => void;
@@ -88,7 +88,12 @@ const FieldImageUploader: React.FC<FieldImageUploaderProps> = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
         <div className="flex justify-between items-center p-4 border-b">
           <h3 className="text-lg font-semibold text-gray-800">
-            <FontAwesomeIcon icon={faImage} className="mr-2 text-green-600" />
+            <img 
+              src="https://icones.pro/wp-content/uploads/2021/06/icone-d-image-rouge.png" 
+              alt="Image icon" 
+              className="w-10 h-10 inline-block mr-2"
+              style={{ background: 'transparent' }}
+            />
             Field Images ({currentImages.length}/5)
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
@@ -187,22 +192,32 @@ const FieldImageUploader: React.FC<FieldImageUploaderProps> = ({
                 </div>
               ) : canAddMoreImages ? (
                 <div 
-                  className={`border-2 border-dashed rounded-lg h-48 flex flex-col items-center justify-center cursor-pointer ${
-                    isDragging ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-green-500'
+                  className={`rounded-lg h-48 flex flex-col items-center justify-center cursor-pointer ${
+                    isDragging ? 'bg-green-50' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                 >
-                  <FontAwesomeIcon icon={faImage} className="text-gray-400 text-4xl mb-2" />
+                  <img 
+                    src="https://icones.pro/wp-content/uploads/2021/06/icone-d-image-rouge.png" 
+                    alt="Image icon" 
+                    className="w-20 h-20 mb-2"
+                    style={{ background: 'transparent' }}
+                  />
                   <p className="text-gray-500 mb-1">Drag and drop an image here</p>
                   <p className="text-gray-400 text-sm">or click to browse</p>
                   <p className="text-gray-400 text-xs mt-2">{currentImages.length}/5 images used</p>
                 </div>
               ) : (
-                <div className="border-2 rounded-lg h-48 flex flex-col items-center justify-center bg-gray-50">
-                  <FontAwesomeIcon icon={faImage} className="text-gray-400 text-4xl mb-2" />
+                <div className="rounded-lg h-48 flex flex-col items-center justify-center bg-transparent">
+                  <img 
+                    src="https://icones.pro/wp-content/uploads/2021/06/icone-d-image-rouge.png" 
+                    alt="Image icon" 
+                    className="w-20 h-20 mb-2"
+                    style={{ background: 'transparent' }}
+                  />
                   <p className="text-red-500">Maximum 5 images per field</p>
                   <p className="text-gray-400 text-sm">Delete existing images to add more</p>
                 </div>

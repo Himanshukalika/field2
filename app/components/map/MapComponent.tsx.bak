@@ -109,6 +109,9 @@ interface PolygonToolsMenuProps {
   onChangeFillOpacity: (opacity: number) => void;
   onChangeName: (name: string) => void;
   onDelete: () => void;
+  onAddImage?: (file: File) => void;
+  onDeleteImage?: (imageIndex: number) => void;
+  onSetMainImage?: (imageIndex: number) => void;
   onToggleEditable?: () => void;
   onToggleDraggable?: () => void;
   strokeColor: string;
@@ -3945,8 +3948,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     onChangeFillOpacity={handleChangeFillOpacity}
     onChangeName={handleChangeName}
     onDelete={handleDeletePolygon}
-    onToggleEditable={handleToggleEditable}
-    onToggleDraggable={handleToggleDraggable}
+    onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
+    onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
+    onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
     strokeColor={polygonStyles.strokeColor}
     fillColor={polygonStyles.fillColor}
     strokeWeight={polygonStyles.strokeWeight}
@@ -5560,64 +5564,45 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           onZoomIn={() => map?.setZoom((map?.getZoom() || 0) + 1)}
           onZoomOut={() => map?.setZoom((map?.getZoom() || 0) - 1)}
         />
-        
-        {/* Add hidden file input for importing files */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          accept=".kml,.geojson,.json"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            // Handle file upload logic here
-            if (e.target.files && e.target.files.length > 0) {
-              // Process the file (implementation would depend on your requirements)
-              console.log("File selected:", e.target.files[0].name);
-              
-              // Reset the input value to allow selecting the same file again
-              e.target.value = '';
-            }
-          }}
+
+        {/* Add the FieldImageGallery component */}
+        <FieldImageGallery
+          fieldImages={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+            ? fieldImages[selectedPolygonIndex].images 
+            : []}
+          mainImageIndex={selectedPolygonIndex !== null && fieldImages[selectedPolygonIndex] 
+            ? fieldImages[selectedPolygonIndex].mainImageIndex 
+            : 0}
+          onAddImage={(file) => selectedPolygonIndex !== null && handleAddFieldImage(selectedPolygonIndex, file)}
+          onDeleteImage={(imageIndex) => selectedPolygonIndex !== null && handleDeleteFieldImage(selectedPolygonIndex, imageIndex)}
+          onSetMainImage={(imageIndex) => selectedPolygonIndex !== null && handleSetMainImage(selectedPolygonIndex, imageIndex)}
+          fieldName={polygonStyles.fieldName}
+          selectedPolygonIndex={selectedPolygonIndex}
         />
-      </div>
-      
-      {/* Permission error message banner */}
-      {user && (
-        <div id="permission-notification" style={{ display: 'none' }} 
-          className="fixed top-14 left-0 right-0 bg-amber-500 text-white p-2 z-50 text-center">
-          <p className="text-sm">
-            Unable to connect to cloud storage. Your fields will be saved locally on this device only.
-          </p>
-        </div>
-      )}
-      
-      {/* Save notification banner */}
-      <div id="save-notification" style={{ display: 'none' }} 
-        className="fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center">
-        <p id="save-notification-text" className="text-sm">Notification message</p>
-      </div>
 
-      {/* DistanceMeasurement Component */}
-      <DistanceMeasurement 
-        map={map}
-        isActive={measureDistanceMode}
-        onExit={handleExitMeasureDistance}
-        onUpdate={handleDistanceUpdate}
-        measurePoints={measurePoints}
-        setMeasurePoints={setMeasurePoints}
-        distance={distance}
-        setDistance={setDistance}
-        isMeasuring={measureDistanceMode}
-        setIsMeasuring={setMeasureDistanceMode}
-        selectedMeasurement={selectedMeasurement}
-        onClearSelectedMeasurement={clearSelectedMeasurement}
-      />
+        {/* Add the PolygonToolsMenu component */}
+        <PolygonToolsMenu 
+          isOpen={showPolygonTools}
+          onClose={() => setShowPolygonTools(false)}
+          onChangeStrokeColor={handleChangeStrokeColor}
+          onChangeFillColor={handleChangeFillColor}
+          onChangeStrokeWeight={handleChangeStrokeWeight}
+          onChangeFillOpacity={handleChangeFillOpacity}
+          onChangeName={handleChangeName}
+          onDelete={handleDeletePolygon}
+          strokeColor={polygonStyles.strokeColor}
+          fillColor={polygonStyles.fillColor}
+          strokeWeight={polygonStyles.strokeWeight}
+          fillOpacity={polygonStyles.fillOpacity}
+          fieldName={polygonStyles.fieldName}
+          fieldImages={[]} // Empty array since we moved image functionality
+          mainImageIndex={0}
+          selectedPolygonIndex={selectedPolygonIndex}
+          isEditable={isSelectedPolygonEditable}
+          isDraggable={isSelectedPolygonDraggable}
+        />
 
-      {/* MarkerComponent */}
-      <MarkerComponent
-        map={map}
-        isActive={markerMode}
-        onExit={handleExitMarkerMode}
-      />
+        
     </LoadScript>
   );
 };
