@@ -39,6 +39,7 @@ interface DistanceMeasurementProps {
   onExit: () => void;
   selectedMeasurement?: any;
   onClearSelectedMeasurement?: () => void;
+  onPositionUpdate?: (position: {lat: number, lng: number}) => void;
 }
 
 const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
@@ -53,7 +54,8 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
   isActive,
   onExit,
   selectedMeasurement,
-  onClearSelectedMeasurement
+  onClearSelectedMeasurement,
+  onPositionUpdate
 }) => {
   const { user } = useAuth();
   const [isHovering, setIsHovering] = useState(false);
@@ -903,6 +905,11 @@ const DistanceMeasurement: React.FC<DistanceMeasurementProps> = ({
     // Save current state to undo stack before adding new point
     if (localPointsRef.current.length > 0) {
       saveToUndoStack([...localPointsRef.current]);
+    }
+    
+    // Save position for next app start
+    if (onPositionUpdate) {
+      onPositionUpdate(latLng);
     }
     
     // Calculate the new index for this point

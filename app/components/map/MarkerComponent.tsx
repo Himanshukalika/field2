@@ -32,12 +32,13 @@ interface MarkerComponentProps {
   map: google.maps.Map | null;
   isActive: boolean;
   onExit: () => void;
+  onPositionUpdate?: (position: {lat: number, lng: number}) => void;
 }
 
 // Defining a default marker path that doesn't require google API
 const MARKER_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z";
 
-const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit }) => {
+const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit, onPositionUpdate }) => {
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<google.maps.Marker | null>(null);
   const [markerLabels, setMarkerLabels] = useState<Record<string, string>>({});
@@ -352,6 +353,14 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
       setRedoStack([]);
     }
     
+    // Save the position for the next app start
+    if (onPositionUpdate && position) {
+      onPositionUpdate({
+        lat: position.lat(),
+        lng: position.lng()
+      });
+    }
+    
     const markerId = generateMarkerId();
     const marker = new google.maps.Marker({
       position,
@@ -399,7 +408,7 @@ const MarkerComponent: React.FC<MarkerComponentProps> = ({ map, isActive, onExit
     // Select the newly created marker
     setSelectedMarker(marker);
     setCurrentLabel(newLabel);
-  }, [map, markers, generateMarkerId, markerLabels, saveMarkerToFirebase, getDefaultMarkerIcon, updateMarkerInFirebase]);
+  }, [map, markers, generateMarkerId, markerLabels, saveMarkerToFirebase, getDefaultMarkerIcon, updateMarkerInFirebase, onPositionUpdate]);
 
   // Modify handleDeleteMarker to update Firebase
   const handleDeleteMarker = useCallback(() => {

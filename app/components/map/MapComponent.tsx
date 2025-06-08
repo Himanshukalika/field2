@@ -134,6 +134,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [userLocation, setUserLocation] = useState<google.maps.LatLng | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [lastPosition, setLastPosition] = useState<{lat: number, lng: number} | null>(null);
+  
+  // Function to save the last position to localStorage
+  const saveLastPosition = useCallback((position: {lat: number, lng: number}) => {
+    // Save to state
+    setLastPosition(position);
+    
+    // Save to localStorage for persistence between sessions
+    try {
+      localStorage.setItem('lastMapPosition', JSON.stringify(position));
+    } catch (error) {
+      console.error('Error saving last position to localStorage:', error);
+    }
+  }, []);
   
   // Add states for polygon tools
   const [selectedPolygonIndex, setSelectedPolygonIndex] = useState<number | null>(null);
@@ -185,6 +199,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
   // New state for save/load functionality
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditSaving, setIsEditSaving] = useState(false);  // New state for edit mode save button
   const [isLoading, setIsLoading] = useState(false);
   const [showSaveOptions, setShowSaveOptions] = useState(false);
   const [showLoadMenu, setShowLoadMenu] = useState(false);
@@ -266,22 +281,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               // Then update state once
               setFieldPolygons(prev => [...prev, ...newPolygons]);
               
-              // Set up a small delay to calculate the bounds
-              setTimeout(() => {
-                if (fields.length === 1) {
-                  // Center on the single field
-                  centerMapOnField(map, fields[0]);
-                } else if (fields.length > 1) {
-                  // Create bounds to contain all fields
-                  const bounds = new google.maps.LatLngBounds();
-                  fields.forEach(field => {
-                    field.points.forEach(point => {
-                      bounds.extend(new google.maps.LatLng(point.lat, point.lng));
-                    });
-                  });
-                  map.fitBounds(bounds);
-                }
-              }, 100);
+              // No need to auto-zoom when loading fields
+              // Keeping the default zoom level instead of zooming to fit all fields
             }
           }
         } catch (error) {
@@ -505,6 +506,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     polygon.set('strokeWeight', polygon.get('strokeWeight') || strokeWeight);
     polygon.set('fillOpacity', polygon.get('fillOpacity') || polygonFillOpacity);
     polygon.set('fieldName', polygon.get('fieldName') || 'Area');
+    
+    // Save the last position where the field was created
+    const polygonPath = polygon.getPath();
+    if (polygonPath.getLength() > 0) {
+      const center = polygonPath.getAt(0);
+      saveLastPosition({
+        lat: center.lat(),
+        lng: center.lng()
+      });
+    }
     
     // Custom field label will be added by the useEffect hook that watches fieldPolygons
     
@@ -2077,6 +2088,17 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Client-side effect
   useEffect(() => {
     setIsClient(true);
+    
+    // Load last position from localStorage if available
+    try {
+      const savedPosition = localStorage.getItem('lastMapPosition');
+      if (savedPosition) {
+        const position = JSON.parse(savedPosition);
+        setLastPosition(position);
+      }
+    } catch (error) {
+      console.error('Error loading last position from localStorage:', error);
+    }
   }, []);
 
   // Add a helper function to create vertex markers consistently - place this before the return statement
@@ -3975,57 +3997,72 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     try {
       setIsSaving(true);
       
-      // Save each polygon to Firestore
-      const savedIds = await Promise.all(
-        fieldPolygons.map(async (polygon, index) => {
-          // Convert polygon to FieldData format
-          const fieldData = polygonToFieldData(polygon, index);
-          
-          // Save to Firestore
-          await saveField(fieldData);
-          
-          // Set the fieldId on the polygon for future updates
-          polygon.set('fieldId', fieldData.id);
-          
-          return fieldData.id;
-        })
-      );
+      // Only save the currently selected polygon if in edit mode
+      // This is faster than saving all polygons
+      if (selectedPolygonIndex !== null && (isSelectedPolygonEditable || isSelectedPolygonDraggable)) {
+        const polygon = fieldPolygons[selectedPolygonIndex];
+        const fieldData = polygonToFieldData(polygon, selectedPolygonIndex);
+        
+        // Save to Firestore
+        await saveField(fieldData);
+        
+        // Set the fieldId on the polygon for future updates
+        polygon.set('fieldId', fieldData.id);
+      } 
+      // If not in edit mode, save all polygons (fallback for other save operations)
+      else {
+        // Convert all polygons to field data first, then save in parallel
+        const fieldDataArray = fieldPolygons.map((polygon, index) => 
+          polygonToFieldData(polygon, index)
+        );
+        
+        // Save all at once in parallel
+        await Promise.all(
+          fieldDataArray.map(async (fieldData, index) => {
+            // Save to Firestore
+            await saveField(fieldData);
+            
+            // Set the fieldId on the polygon for future updates
+            fieldPolygons[index].set('fieldId', fieldData.id);
+          })
+        );
+      }
       
-      // Show temporary success message in banner
+      // Show a quick notification for 1 second only
       const notificationElement = document.getElementById('save-notification');
       const notificationTextElement = document.getElementById('save-notification-text');
       if (notificationElement && notificationTextElement) {
-        notificationTextElement.textContent = `Successfully saved ${savedIds.length} fields`;
+        notificationTextElement.textContent = `Saved successfully`;
         notificationElement.style.display = 'block';
         notificationElement.className = 'fixed top-14 left-0 right-0 bg-green-500 text-white p-2 z-50 text-center';
         
-        // Hide the notification after 3 seconds
+        // Hide the notification after just 1 second
         setTimeout(() => {
           notificationElement.style.display = 'none';
-        }, 3000);
+        }, 1000);
       }
       
       setShowSaveOptions(false);
     } catch (error) {
       console.error('Error saving fields:', error);
       
-      // Show error message in banner
+      // Brief error notification
       const notificationElement = document.getElementById('save-notification');
       const notificationTextElement = document.getElementById('save-notification-text');
       if (notificationElement && notificationTextElement) {
-        notificationTextElement.textContent = 'Error saving fields. Please try again later.';
+        notificationTextElement.textContent = 'Error saving. Please try again.';
         notificationElement.style.display = 'block';
         notificationElement.className = 'fixed top-14 left-0 right-0 bg-red-500 text-white p-2 z-50 text-center';
         
-        // Hide the notification after 3 seconds
+        // Hide the notification after 1 second
         setTimeout(() => {
           notificationElement.style.display = 'none';
-        }, 3000);
+        }, 1000);
       }
     } finally {
       setIsSaving(false);
     }
-  }, [fieldPolygons, user]);
+  }, [fieldPolygons, user, selectedPolygonIndex, isSelectedPolygonEditable, isSelectedPolygonDraggable]);
 
   // Expose handleSaveAllFields to window for use in DistanceMeasurement component
   useEffect(() => {
@@ -4182,20 +4219,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                 // Then update state once
                 setFieldPolygons(prev => [...prev, ...newPolygons]);
                 
-                // Fit map to show all fields
-                setTimeout(() => {
-                  if (fields.length === 1) {
-                    centerMapOnField(map, fields[0]);
-                  } else if (fields.length > 1) {
-                    const bounds = new google.maps.LatLngBounds();
-                    fields.forEach(field => {
-                      field.points.forEach(point => {
-                        bounds.extend(new google.maps.LatLng(point.lat, point.lng));
-                      });
-                    });
-                    map.fitBounds(bounds);
-                  }
-                }, 100);
+                // No auto-zoom when loading fields - keep default zoom level
               }
             }
           } catch (error) {
@@ -4214,6 +4238,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     if (isDrawingMode) {
       handleCancelDrawing();
     }
+    
+    // If the map is available, save the current center as the last position
+    if (map) {
+      const center = map.getCenter();
+      if (center) {
+        saveLastPosition({
+          lat: center.lat(),
+          lng: center.lng()
+        });
+      }
+    }
+    
     setMeasureDistanceMode(true);
     setShowPolygonTools(false);
   };
@@ -4783,6 +4819,17 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       handleExitMeasureDistance();
     }
     
+    // If the map is available, save the current center as the last position
+    if (map) {
+      const center = map.getCenter();
+      if (center) {
+        saveLastPosition({
+          lat: center.lat(),
+          lng: center.lng()
+        });
+      }
+    }
+    
     // Toggle marker mode
     setMarkerMode(prev => !prev);
     
@@ -4906,18 +4953,26 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Function to save the field and exit edit mode
   const handleSaveAndExitEditMode = useCallback(async () => {
     try {
+      // Set saving state to true
+      setIsEditSaving(true);
+      
       // First save the field
       await handleSaveAllFields();
+      
+      // Reset saving state immediately after saving completes
+      setIsEditSaving(false);
       
       // Then exit edit mode
       handleExitEditMode();
       
     } catch (error) {
       console.error('Error while saving and exiting edit mode:', error);
+      // Reset saving state
+      setIsEditSaving(false);
       // Still try to exit edit mode even if saving fails
       handleExitEditMode();
     }
-  }, [handleSaveAllFields, handleExitEditMode]);
+  }, [handleSaveAllFields, handleExitEditMode, setIsEditSaving]);
 
   // Add click handlers to all field polygons
   useEffect(() => {
@@ -5117,9 +5172,14 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   
                   <button
                     onClick={handleSaveAndExitEditMode}
+                    disabled={isEditSaving}
                     className="text-white hover:bg-white/20 rounded px-2 py-1 text-sm"
                   >
-                    SAVE
+                    {isEditSaving ? (
+                      <span className="animate-pulse">SAVING...</span>
+                    ) : (
+                      "SAVE"
+                    )}
                   </button>
                 </div>
               </div>
@@ -5154,7 +5214,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
           <GoogleMap
             mapContainerStyle={mapStyles.map}
-            center={defaultCenter}
+            center={lastPosition || defaultCenter}
             zoom={21}
             onLoad={onLoad}
             onUnmount={onUnmount}
@@ -5529,9 +5589,16 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                 <div>
                   <button
                     onClick={handleSaveAndExitEditMode}
+                    disabled={isEditSaving}
                     className="flex items-center gap-1 px-2 py-2 bg-green-500 text-white rounded-md shadow hover:bg-green-600 transition-colors"
                   >
-                    <FontAwesomeIcon icon={faCheck} />
+                    {isEditSaving ? (
+                      <>
+                        <span className="animate-pulse mr-1">Saving...</span>
+                      </>
+                    ) : (
+                      <FontAwesomeIcon icon={faCheck} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -5610,6 +5677,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         setIsMeasuring={setMeasureDistanceMode}
         selectedMeasurement={selectedMeasurement}
         onClearSelectedMeasurement={clearSelectedMeasurement}
+        onPositionUpdate={saveLastPosition}
       />
 
       {/* MarkerComponent */}
@@ -5617,6 +5685,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         map={map}
         isActive={markerMode}
         onExit={handleExitMarkerMode}
+        onPositionUpdate={saveLastPosition}
       />
     </LoadScript>
   );
