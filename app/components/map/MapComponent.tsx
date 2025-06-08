@@ -34,7 +34,7 @@ import {
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
 import { useAuth } from '@/app/context/AuthContext';
-import { saveField, getUserFields, deleteField, checkFirestorePermissions, getUserDistanceMeasurements, deleteDistanceMeasurement } from '../../lib/firebase';
+import { saveField, getUserFields, getUserFieldsInBounds, deleteField, checkFirestorePermissions, getUserDistanceMeasurements, deleteDistanceMeasurement } from '../../lib/firebase';
 import { polygonToFieldData, fieldDataToPolygon, centerMapOnField } from '../../lib/mapUtils';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadFieldImage, deleteFieldImage, getFieldImageUrl } from '@/app/lib/storage';
@@ -196,6 +196,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Add state for tracking if the selected polygon is editable or draggable
   const [isSelectedPolygonEditable, setIsSelectedPolygonEditable] = useState(false);
   const [isSelectedPolygonDraggable, setIsSelectedPolygonDraggable] = useState(false);
+  
+  // Add state to track loaded field IDs to prevent duplicates
+  const [loadedFieldIds, setLoadedFieldIds] = useState<Set<string>>(new Set());
 
   // New state for save/load functionality
   const [isSaving, setIsSaving] = useState(false);
@@ -1023,6 +1026,73 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Map event handlers
   const onLoad = useCallback((map: google.maps.Map) => {
     setMap(map);
+    
+    // Add idle listener to load fields when map stops moving
+    map.addListener('idle', async () => {
+      if (user && !isDrawingMode) {
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        
+        const boundLiteral = {
+          north: bounds.getNorthEast().lat(),
+          south: bounds.getSouthWest().lat(),
+          east: bounds.getNorthEast().lng(),
+          west: bounds.getSouthWest().lng(),
+        };
+        
+        try {
+          // Only load fields within the current viewport
+          const fields = await getUserFieldsInBounds(boundLiteral);
+          
+          if (fields && fields.length > 0) {
+            // Create a batch of polygons to add at once
+            const newPolygons: google.maps.Polygon[] = [];
+            // Track which new field IDs we're adding
+            const newLoadedIds = new Set<string>();
+            
+            // Only load fields that aren't already loaded
+            fields.forEach(fieldData => {
+              // Skip if this field is already loaded
+              if (fieldData.id && loadedFieldIds.has(fieldData.id)) {
+                return;
+              }
+              
+              // Create the polygon but don't add to map yet
+              const polygon = fieldDataToPolygon(fieldData, null);
+              
+              // Store the field ID with the polygon for future reference
+              if (fieldData.id) {
+                polygon.set('fieldId', fieldData.id);
+                newLoadedIds.add(fieldData.id);
+              }
+              
+              // Add to our batch
+              newPolygons.push(polygon);
+            });
+            
+            // Now add all polygons to the map and state at once
+            if (newPolygons.length > 0) {
+              console.log(`Loading ${newPolygons.length} fields on map idle`);
+              
+              // First add to map
+              newPolygons.forEach(polygon => polygon.setMap(map));
+              
+              // Then update state once
+              setFieldPolygons(prev => [...prev, ...newPolygons]);
+              
+              // Update our loaded field IDs
+              setLoadedFieldIds(prev => {
+                const newSet = new Set(prev);
+                newLoadedIds.forEach(id => newSet.add(id));
+                return newSet;
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error loading fields after map movement:', error);
+        }
+      }
+    });
 
     // Create the DistanceOverlay class after Google Maps is loaded
     class DistanceOverlay extends google.maps.OverlayView {
@@ -1150,11 +1220,15 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
 
     // Store the class in the ref
     DistanceOverlayRef.current = DistanceOverlay;
-  }, []);
+  }, [user, isDrawingMode, loadedFieldIds]);
 
   const onUnmount = useCallback(() => {
+    if (map) {
+      // Clean up all listeners
+      google.maps.event.clearInstanceListeners(map);
+    }
     setMap(null);
-  }, []);
+  }, [map]);
 
   // Map controls handlers
   const handleToggleMapType = useCallback(() => {
@@ -4177,24 +4251,33 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           console.warn('Firebase permissions unavailable. Using local storage fallback.');
         }
         
-        // Load user's fields if we have none loaded yet
-        if (fieldPolygons.length === 0 && map && !isDrawingMode) {
+        // Load user's fields that are in the current viewport
+        if (map && !isDrawingMode) {
           try {
-            // Load fields without showing any loading animation
-            const fields = await getUserFields();
+            // Get current map bounds
+            const bounds = map.getBounds();
+            if (!bounds) return;
+            
+            const boundLiteral = {
+              north: bounds.getNorthEast().lat(),
+              south: bounds.getSouthWest().lat(),
+              east: bounds.getNorthEast().lng(),
+              west: bounds.getSouthWest().lng(),
+            };
+            
+            // Only load fields within the current viewport
+            const fields = await getUserFieldsInBounds(boundLiteral);
             
             if (fields && fields.length > 0) {
-              // Track already loaded field IDs to prevent duplicates
-              const loadedFieldIds = new Set(fieldPolygons.map(polygon => polygon.get('fieldId')));
-              
               // Create a batch of polygons to add at once (more efficient than multiple state updates)
               const newPolygons: google.maps.Polygon[] = [];
+              // Track which new field IDs we're adding
+              const newLoadedIds = new Set<string>();
               
-              // Automatically load all fields without asking
+              // Automatically load fields within viewport
               fields.forEach(fieldData => {
                 // Skip if this field is already loaded
                 if (fieldData.id && loadedFieldIds.has(fieldData.id)) {
-                  console.log(`Field ${fieldData.id} already loaded, skipping`);
                   return;
                 }
                 
@@ -4204,7 +4287,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                 // Store the field ID with the polygon for future reference
                 if (fieldData.id) {
                   polygon.set('fieldId', fieldData.id);
-                  loadedFieldIds.add(fieldData.id); // Mark as loaded
+                  newLoadedIds.add(fieldData.id); // Mark as loaded
                 }
                 
                 // Add to our batch
@@ -4213,24 +4296,31 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               
               // Now add all polygons to the map and state at once
               if (newPolygons.length > 0) {
+                console.log(`Loading ${newPolygons.length} fields in current viewport`);
+                
                 // First add to map
                 newPolygons.forEach(polygon => polygon.setMap(map));
                 
                 // Then update state once
                 setFieldPolygons(prev => [...prev, ...newPolygons]);
                 
-                // No auto-zoom when loading fields - keep default zoom level
+                // Update our loaded field IDs
+                setLoadedFieldIds(prev => {
+                  const newSet = new Set(prev);
+                  newLoadedIds.forEach(id => newSet.add(id));
+                  return newSet;
+                });
               }
             }
           } catch (error) {
-            console.error('Error loading fields after authentication:', error);
+            console.error('Error loading fields in viewport:', error);
           }
         }
       }
     };
     
     checkPermissionsAndLoadData();
-  }, [user, map, fieldPolygons.length, isDrawingMode]);
+  }, [user, map, isDrawingMode, loadedFieldIds]);
 
   // Function to handle the measure distance option
   const handleMeasureDistance = () => {
