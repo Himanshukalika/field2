@@ -259,7 +259,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
               if (!bounds) return true;
               
               // Check if any point of the field is within the current viewport
-              return fieldData.points.some(point => 
+              return fieldData.points.some((point: {lat: number, lng: number}) => 
                 bounds.contains(new google.maps.LatLng(point.lat, point.lng))
               );
             });
@@ -334,7 +334,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       // Find fields that are now visible
       const newVisibleFields = remainingFieldsToLoad.filter(fieldData => 
-        fieldData.points.some(point => 
+        fieldData.points.some((point: {lat: number, lng: number}) => 
           bounds.contains(new google.maps.LatLng(point.lat, point.lng))
         )
       );
