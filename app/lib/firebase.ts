@@ -219,36 +219,6 @@ export const getUserFields = async (): Promise<FieldData[]> => {
   }
 };
 
-// Get fields that are visible within the current map bounds
-export const getUserFieldsInBounds = async (bounds: {
-  north: number,
-  south: number,
-  east: number,
-  west: number
-}): Promise<FieldData[]> => {
-  try {
-    // First get all fields
-    const allFields = await getUserFields();
-    
-    // Then filter fields to only include those with at least one point within the current bounds
-    return allFields.filter(field => {
-      // No points, can't be in bounds
-      if (!field.points || field.points.length === 0) return false;
-      
-      // Check if any point of the field is within the bounds
-      return field.points.some(point => 
-        point.lat <= bounds.north && 
-        point.lat >= bounds.south && 
-        point.lng <= bounds.east && 
-        point.lng >= bounds.west
-      );
-    });
-  } catch (error) {
-    console.error('Error getting fields in bounds:', error);
-    throw error;
-  }
-};
-
 // Get single field by ID (with fallback to local storage if permissions fail)
 export const getFieldById = async (fieldId: string): Promise<FieldData | null> => {
   try {
@@ -393,6 +363,8 @@ const deleteFieldFromLocalStorage = (fieldId: string): boolean => {
     return false;
   }
 };
+
+
 
 // Save distance measurement to Firestore (with fallback to local storage if permissions fail)
 export const saveDistanceMeasurement = async (measurementData: Omit<DistanceMeasurementData, 'userId' | 'createdAt' | 'updatedAt'>) => {

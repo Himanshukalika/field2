@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { FieldData } from './firebase';
 import { PolygonPoint } from '../components/map/types';
 
+
+
 /**
  * Converts a Google Maps polygon to a FieldData object for storing in Firestore
  */
@@ -40,7 +42,7 @@ export const polygonToFieldData = (
   // Get field properties
   return {
     id: fieldId,
-    points,
+    points: points,
     area: areaInHectares,
     perimeter: perimeterInKm,
     measurements: [], // We don't currently store specific measurements
