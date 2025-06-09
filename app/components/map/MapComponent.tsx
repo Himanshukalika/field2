@@ -30,7 +30,10 @@ import {
   faBrush, 
   faArrowsAlt,
   faPencilAlt,
-  faPen
+  faPen,
+  faEllipsisV,
+  faObjectGroup,
+  faObjectUngroup
 } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
@@ -232,6 +235,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
   // Add states to store references to measurement polylines and polygons
   const [measurementPolylines, setMeasurementPolylines] = useState<Record<string, google.maps.Polyline>>({});
   const [measurementPolygons, setMeasurementPolygons] = useState<Record<string, google.maps.Polygon>>({});
+
+  // Add state for advanced tools dropdown
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
+  
+  // Add state for merge mode
+  const [isMergeMode, setIsMergeMode] = useState(false);
+  const [polygonsToMerge, setPolygonsToMerge] = useState<number[]>([]);
 
   // ... existing code, add after undoStack initialization ...
   
@@ -2388,6 +2398,23 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     
     console.log("Polygon clicked:", index);
     
+    // If in merge mode, handle polygon selection for merging
+    if (isMergeMode) {
+      // Handle polygon selection for merging directly
+      const polygon = fieldPolygons[index];
+      
+      setPolygonsToMerge(prev => {
+        // If already selected, remove it
+        if (prev.includes(index)) {
+          return prev.filter(i => i !== index);
+        }
+        // Otherwise add it
+        return [...prev, index];
+      });
+      
+      return;
+    }
+    
     // First, reset all polygons to their default styling
     fieldPolygons.forEach((poly, polyIndex) => {
       if (polyIndex !== index) {
@@ -2500,7 +2527,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       // Don't automatically show tools when selecting a polygon
       // The user will need to click the tools button to show the menu
     }
-  }, [isDrawingMode, selectedPolygonIndex, fieldPolygons, strokeColor, polygonColor, strokeWeight, polygonFillOpacity]);
+  }, [isDrawingMode, isMergeMode, selectedPolygonIndex, fieldPolygons, strokeColor, polygonColor, strokeWeight, polygonFillOpacity]);
 
   // Add handlers for polygon style changes
   const handleChangeStrokeColor = useCallback((color: string) => {
@@ -3437,6 +3464,269 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     }
   }, [map, onPolygonComplete, polygonColor, polygonFillOpacity, strokeColor, strokeWeight, user, fieldPolygons.length]);
 
+  // Add function to handle toggling merge mode
+  const handleToggleMergeMode = useCallback(() => {
+    // Toggle merge mode
+    setIsMergeMode(prevMode => !prevMode);
+    
+    // Reset the list of polygons to merge when toggling
+    setPolygonsToMerge([]);
+    
+    // Close advanced tools dropdown
+    setShowAdvancedTools(false);
+    
+    // Reset any selected polygon when entering merge mode
+    if (!isMergeMode) {
+      if (selectedPolygonIndex !== null) {
+        // Deselect the current polygon
+        const polygon = fieldPolygons[selectedPolygonIndex];
+        const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+        
+        polygon.setOptions({
+          strokeWeight: originalStrokeWeight,
+          zIndex: selectedPolygonIndex + 10
+        });
+        
+        polygon.setEditable(false);
+        polygon.setDraggable(false);
+        
+        setSelectedPolygonIndex(null);
+        setSelectedFieldInfo(null);
+        setShowPolygonTools(false);
+      }
+    }
+  }, [isMergeMode, selectedPolygonIndex, fieldPolygons, strokeWeight]);
+
+  // Function to handle polygon selection in merge mode
+  const handleSelectPolygonForMerge = useCallback((index: number) => {
+    if (!isMergeMode) return;
+    
+    setPolygonsToMerge(prev => {
+      // If already selected, remove it
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index);
+      }
+      // Otherwise add it
+      return [...prev, index];
+    });
+    
+    // Highlight or unhighlight the polygon
+    const polygon = fieldPolygons[index];
+    
+    if (polygonsToMerge.includes(index)) {
+      // Unhighlight - reset to original style
+      const originalStrokeWeight = polygon.get('originalStrokeWeight') || strokeWeight;
+      polygon.setOptions({
+        strokeWeight: originalStrokeWeight,
+        strokeColor: polygon.get('strokeColor') || strokeColor,
+        zIndex: index + 10
+      });
+    } else {
+      // Highlight - store original stroke weight and set new style
+      const currentStrokeWeight = polygon.get('strokeWeight') || strokeWeight;
+      polygon.set('originalStrokeWeight', currentStrokeWeight);
+      
+      polygon.setOptions({
+        strokeWeight: 4,
+        strokeColor: '#FF9800', // Orange color for merge selection
+        zIndex: 1000 + index
+      });
+    }
+  }, [isMergeMode, fieldPolygons, polygonsToMerge, strokeWeight, strokeColor]);
+  
+  // Function to merge selected polygons
+  const handleMergePolygons = useCallback(() => {
+    if (polygonsToMerge.length < 2) {
+      // Need at least 2 polygons to merge
+      return;
+    }
+    
+    try {
+      // Get the polygons to merge
+      const polygonsToMergeObjects = polygonsToMerge
+        .map(index => fieldPolygons[index])
+        .filter(Boolean); // Filter out any undefined values
+      
+      if (polygonsToMergeObjects.length < 2) return;
+      
+      // Create a union of all the polygons
+      // We'll use a simple approach: collect all vertices from all polygons
+      const allVertices: google.maps.LatLng[] = [];
+      
+      // Get all vertices from all polygons
+      polygonsToMergeObjects.forEach(polygon => {
+        const path = polygon.getPath();
+        for (let i = 0; i < path.getLength(); i++) {
+          allVertices.push(path.getAt(i));
+        }
+      });
+      
+      // Create a convex hull from all vertices
+      // This is a simplified approach - for more complex merges, we'd need a proper geometric library
+      const convexHull = computeConvexHull(allVertices);
+      
+      // Create a new polygon with the merged vertices
+      const mergedPolygon = new google.maps.Polygon({
+        paths: convexHull,
+        strokeColor: polygonsToMergeObjects[0].get('strokeColor') || strokeColor,
+        strokeWeight: strokeWeight,
+        fillColor: polygonsToMergeObjects[0].get('fillColor') || polygonColor,
+        fillOpacity: polygonFillOpacity,
+        editable: false,
+        draggable: false,
+        map: map
+      });
+      
+      // Set properties for the new polygon
+      mergedPolygon.set('fieldName', 'Merged Area');
+      mergedPolygon.set('strokeColor', mergedPolygon.get('strokeColor'));
+      mergedPolygon.set('fillColor', mergedPolygon.get('fillColor'));
+      mergedPolygon.set('strokeWeight', strokeWeight);
+      mergedPolygon.set('fillOpacity', polygonFillOpacity);
+      
+      // Add the new polygon to our state
+      setFieldPolygons(prev => [...prev, mergedPolygon]);
+      
+      // Remove all the merged polygons
+      polygonsToMergeObjects.forEach(polygon => {
+        // Clean up any markers associated with this polygon
+        const vertexMarkers = polygon.get('vertexMarkers') || [];
+        vertexMarkers.forEach((marker: google.maps.Marker) => {
+          marker.setMap(null);
+        });
+        
+        const edgeMarkers = polygon.get('edgeMarkers') || [];
+        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+          marker.setMap(null);
+        });
+        
+        // Remove the custom label overlay
+        const overlay = polygon.get('labelOverlay') as any;
+        if (overlay && typeof overlay.setMap === 'function') {
+          overlay.setMap(null);
+        }
+        
+        const labelDiv = polygon.get('labelDiv') as HTMLDivElement;
+        if (labelDiv && labelDiv.parentElement) {
+          labelDiv.parentElement.removeChild(labelDiv);
+        }
+        
+        // Remove the polygon from the map
+        polygon.setMap(null);
+        
+        // Delete from Firebase if it has an ID
+        const fieldId = polygon.get('fieldId');
+        if (fieldId && user) {
+          deleteField(fieldId).catch(error => {
+            console.error('Error deleting merged field from Firestore:', error);
+          });
+        }
+      });
+      
+      // Update the state - remove the merged polygons
+      setFieldPolygons(prev => prev.filter((_, index) => !polygonsToMerge.includes(index)));
+      
+      // Save the merged polygon to Firebase if user is logged in
+      if (user) {
+        // Convert to FieldData format
+        const fieldData = polygonToFieldData(mergedPolygon, fieldPolygons.length - 1);
+        
+        // Save to Firebase
+        saveField(fieldData).then(fieldId => {
+          // Update the polygon with the field ID
+          mergedPolygon.set('fieldId', fieldId);
+          
+          // Show success notification
+          const notificationElement = document.getElementById('save-notification');
+          const notificationTextElement = document.getElementById('save-notification-text');
+          if (notificationElement && notificationTextElement) {
+            notificationTextElement.textContent = 'Merged field saved successfully';
+            notificationElement.style.display = 'block';
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+              notificationElement.style.display = 'none';
+            }, 3000);
+          }
+        }).catch(error => {
+          console.error('Error saving merged field:', error);
+          
+          // Show error notification
+          alert('Error saving merged field. The field may not persist after refresh.');
+        });
+      }
+      
+      // Exit merge mode
+      setIsMergeMode(false);
+      setPolygonsToMerge([]);
+      
+    } catch (error) {
+      console.error('Error merging polygons:', error);
+    }
+  }, [polygonsToMerge, fieldPolygons, map, strokeColor, strokeWeight, polygonColor, polygonFillOpacity, user]);
+  
+  // Function to compute the convex hull of a set of points (Graham scan algorithm)
+  const computeConvexHull = useCallback((points: google.maps.LatLng[]): google.maps.LatLng[] => {
+    if (points.length <= 3) return points;
+    
+    // Find the point with the lowest y-coordinate (and leftmost if tied)
+    let lowestPoint = points[0];
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].lat() < lowestPoint.lat() || 
+          (points[i].lat() === lowestPoint.lat() && points[i].lng() < lowestPoint.lng())) {
+        lowestPoint = points[i];
+      }
+    }
+    
+    // Sort points by polar angle with respect to the lowest point
+    const sortedPoints = [...points].sort((a, b) => {
+      if (a === lowestPoint) return -1;
+      if (b === lowestPoint) return 1;
+      
+      const angleA = Math.atan2(a.lat() - lowestPoint.lat(), a.lng() - lowestPoint.lng());
+      const angleB = Math.atan2(b.lat() - lowestPoint.lat(), b.lng() - lowestPoint.lng());
+      
+      if (angleA < angleB) return -1;
+      if (angleA > angleB) return 1;
+      
+      // If angles are the same, take the point that's further from lowestPoint
+      const distA = (a.lat() - lowestPoint.lat()) ** 2 + (a.lng() - lowestPoint.lng()) ** 2;
+      const distB = (b.lat() - lowestPoint.lat()) ** 2 + (b.lng() - lowestPoint.lng()) ** 2;
+      
+      return distB - distA;
+    });
+    
+    // Remove duplicate points
+    const uniquePoints = [sortedPoints[0]];
+    for (let i = 1; i < sortedPoints.length; i++) {
+      if (sortedPoints[i].lat() !== sortedPoints[i-1].lat() || 
+          sortedPoints[i].lng() !== sortedPoints[i-1].lng()) {
+        uniquePoints.push(sortedPoints[i]);
+      }
+    }
+    
+    // Graham scan algorithm
+    if (uniquePoints.length <= 3) return uniquePoints;
+    
+    const hull = [uniquePoints[0], uniquePoints[1]];
+    
+    for (let i = 2; i < uniquePoints.length; i++) {
+      while (hull.length >= 2 && !isLeftTurn(hull[hull.length - 2], hull[hull.length - 1], uniquePoints[i])) {
+        hull.pop();
+      }
+      hull.push(uniquePoints[i]);
+    }
+    
+    return hull;
+  }, []);
+  
+  // Helper function for convex hull algorithm to determine if three points make a left turn
+  const isLeftTurn = useCallback((p1: google.maps.LatLng, p2: google.maps.LatLng, p3: google.maps.LatLng): boolean => {
+    const cross = (p2.lng() - p1.lng()) * (p3.lat() - p1.lat()) - 
+                 (p2.lat() - p1.lat()) * (p3.lng() - p1.lng());
+    return cross > 0;
+  }, []);
+
   // Add a function to handle cancelling the drawing
   const handleCancelDrawing = useCallback(() => {
     // Clear any active red markers first
@@ -4137,20 +4427,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       if (selectedPolygonIndex !== null && (isSelectedPolygonEditable || isSelectedPolygonDraggable)) {
         const polygon = fieldPolygons[selectedPolygonIndex];
         const fieldData = polygonToFieldData(polygon, selectedPolygonIndex);
-        
-        // Save to Firestore
-        await saveField(fieldData);
-        
-        // Set the fieldId on the polygon for future updates
-        polygon.set('fieldId', fieldData.id);
+          
+          // Save to Firestore
+          await saveField(fieldData);
+          
+          // Set the fieldId on the polygon for future updates
+          polygon.set('fieldId', fieldData.id);
       } 
       // If not in edit mode, save all polygons (fallback for other save operations)
       else {
         // Convert all polygons to field data first, then save in parallel
         const fieldDataArray = fieldPolygons.map((polygon, index) => 
           polygonToFieldData(polygon, index)
-        );
-        
+      );
+      
         // Save all at once in parallel
         await Promise.all(
           fieldDataArray.map(async (fieldData, index) => {
@@ -5293,18 +5583,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     <FontAwesomeIcon icon={faPencilAlt} className="text-lg" />
                   </button>
                   
-                  {/* Move field button - icon only */}
-                  <button
-                    onClick={handleToggleDraggable}
-                    className={`p-2 transition-colors ${
-                      isSelectedPolygonDraggable 
-                        ? "text-green-300" 
-                        : "text-white hover:text-yellow-200"
-                    }`}
-                    title={isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
-                  >
-                    <FontAwesomeIcon icon={faArrowsAlt} className="text-lg" />
-                  </button>
+                  {/* Move field button removed - moved to advanced tools dropdown */}
                   
                   {/* Delete field button - icon only */}
                   <button
@@ -5314,6 +5593,60 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   >
                     <FontAwesomeIcon icon={faTrash} className="text-lg" />
                   </button>
+                  
+                  {/* Advanced tool icon (three dots/ellipsis) with dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowAdvancedTools(!showAdvancedTools)}
+                      className="p-2 text-white hover:text-yellow-200 transition-colors"
+                      title="Advanced Tools"
+                    >
+                      <FontAwesomeIcon icon={faEllipsisV} className="text-lg" />
+                    </button>
+                    
+                    {/* Advanced tools dropdown */}
+                    {showAdvancedTools && (
+                      <div className="absolute right-0 mt-1 bg-white rounded-md shadow-lg z-[102] w-40">
+                        <div className="py-1">
+                          {/* Move field option */}
+                          <button
+                            onClick={() => {
+                              handleToggleDraggable();
+                              setShowAdvancedTools(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-sm ${
+                              isSelectedPolygonDraggable 
+                                ? "text-green-600 font-medium" 
+                                : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            <div className="flex items-center">
+                              <FontAwesomeIcon icon={faArrowsAlt} className="mr-2" />
+                              {isSelectedPolygonDraggable ? "Disable Moving" : "Move Field"}
+                            </div>
+                          </button>
+                          
+                          {/* Merge fields option */}
+                          <button
+                            onClick={() => {
+                              handleToggleMergeMode();
+                              setShowAdvancedTools(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-sm ${
+                              isMergeMode 
+                                ? "text-green-600 font-medium" 
+                                : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            <div className="flex items-center">
+                              <FontAwesomeIcon icon={faObjectGroup} className="mr-2" />
+                              {isMergeMode ? "Cancel Merge" : "Merge Fields"}
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Tools button on right */}
@@ -5384,6 +5717,43 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                   <span className="text-purple-400 font-medium">
                     {bannerInfo.vertices}
                   </span>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Add the merge mode banner */}
+          {isMergeMode && (
+            <div className="absolute top-0 left-0 right-0 bg-orange-500 shadow-lg z-20 p-2">
+              <div className="container mx-auto flex justify-between items-center">
+                <button
+                  onClick={handleToggleMergeMode}
+                  className="text-white hover:bg-white/20 rounded-full p-1.5"
+                  title="Exit Merge Mode"
+                >
+                  <FontAwesomeIcon icon={faTimes} className="text-base" />
+                </button>
+                
+                <div className="flex-1 text-center">
+                  <span className="font-medium text-white">
+                    {polygonsToMerge.length === 0 
+                      ? "Select fields to merge" 
+                      : `Selected ${polygonsToMerge.length} field${polygonsToMerge.length !== 1 ? 's' : ''}`}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleMergePolygons}
+                    disabled={polygonsToMerge.length < 2}
+                    className={`text-white rounded px-2 py-1 text-sm ${
+                      polygonsToMerge.length < 2 
+                        ? "opacity-50 cursor-not-allowed" 
+                        : "hover:bg-white/20"
+                    }`}
+                  >
+                    MERGE & SAVE
+                  </button>
                 </div>
               </div>
             </div>
@@ -5505,12 +5875,18 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                 options={{
                     fillColor: polygon.get('fillColor') || polygonColor,
                     fillOpacity: polygon.get('fillOpacity') || polygonFillOpacity,
-                    strokeColor: polygon.get('strokeColor') || strokeColor,
-                    strokeWeight: polygon.get('strokeWeight') || strokeWeight,
+                    strokeColor: isMergeMode && polygonsToMerge.includes(index) 
+                      ? '#FF9800' // Orange color for selected polygons in merge mode
+                      : (polygon.get('strokeColor') || strokeColor),
+                    strokeWeight: isMergeMode && polygonsToMerge.includes(index)
+                      ? 4 // Thicker border for selected polygons in merge mode
+                      : (polygon.get('strokeWeight') || strokeWeight),
                     clickable: true,
                     editable: false, // Never make React polygons editable
                     draggable: false, // Never make React polygons draggable
-                    zIndex: (index + 10), // Give higher z-index to more recently created polygons
+                    zIndex: isMergeMode && polygonsToMerge.includes(index)
+                      ? (1000 + index) // Higher z-index for selected polygons in merge mode
+                      : (index + 10), // Give higher z-index to more recently created polygons
                 }}
                 onClick={(e) => {
                     // If we're in drawing mode, let the click pass through
@@ -5833,7 +6209,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                         <span className="animate-pulse mr-1">Saving...</span>
                       </>
                     ) : (
-                      <FontAwesomeIcon icon={faCheck} />
+                    <FontAwesomeIcon icon={faCheck} />
                     )}
                   </button>
                 </div>
