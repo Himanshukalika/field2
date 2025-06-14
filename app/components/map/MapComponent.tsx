@@ -2659,11 +2659,11 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
             
             // Create a simple distance label overlay directly (not using DistanceOverlayRef)
             class SimpleDistanceOverlay extends google.maps.OverlayView {
-              private position: google.maps.LatLng;
+              private position: google.maps.LatLng | google.maps.LatLngLiteral;
               private content: string;
               private div: HTMLDivElement | null = null;
               
-              constructor(position: google.maps.LatLng, content: string) {
+              constructor(position: google.maps.LatLng | google.maps.LatLngLiteral, content: string) {
                 super();
                 this.position = position;
                 this.content = content;
@@ -2695,8 +2695,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                 const overlayProjection = this.getProjection();
                 if (!overlayProjection || !this.div) return;
                 
+                // Fix type error: Ensure position.lat and position.lng are numbers, not functions
+                const lat = typeof this.position.lat === 'function' ? this.position.lat() : this.position.lat;
+                const lng = typeof this.position.lng === 'function' ? this.position.lng() : this.position.lng;
+                
                 const position = overlayProjection.fromLatLngToDivPixel(
-                  new google.maps.LatLng(this.position.lat, this.position.lng)
+                  new google.maps.LatLng(lat, lng)
                 );
                 
                 if (position) {
