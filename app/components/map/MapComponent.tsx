@@ -2606,6 +2606,151 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         polygon.setOptions({
           strokeWeight: originalStrokeWeight
         });
+        
+        // Function to add edge markers with distance labels for the polygon
+        const addEdgeMarkers = () => {
+          // Remove existing edge markers
+          const oldMarkers = polygon.get('edgeMarkers') || [];
+          oldMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+            marker.setMap(null);
+          });
+
+          // Create new edge markers
+          const newEdgeMarkers: (google.maps.Marker | google.maps.OverlayView)[] = [];
+          const path = polygon.getPath();
+          
+          for (let i = 0; i < path.getLength(); i++) {
+            const p1 = path.getAt(i);
+            const p2 = path.getAt((i + 1) % path.getLength());
+            
+            // Calculate midpoint
+            const midLat = (p1.lat() + p2.lat()) / 2;
+            const midLng = (p1.lng() + p2.lng()) / 2;
+            const midpoint = new google.maps.LatLng(midLat, midLng);
+            
+            // Calculate distance
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+            const distanceText = distance < 1000 
+              ? `${distance.toFixed(3)}m`
+              : `${(distance / 1000).toFixed(2)}km`;
+            
+            // Calculate appropriate circle scale based on distance
+            let circleScale = defaultMarkerScale;
+            
+            // Dynamically adjust scale based on distance
+            if (distance > 5000) { // More than 5km
+              circleScale = 7;
+            } else if (distance < 5) { // Less than 5m
+              circleScale = 2;
+            } else if (distance < 10) { // Less than 10m
+              circleScale = 3;
+            } else if (distance < 100) { // Less than 100m
+              circleScale = 4;
+            }
+            
+            // Calculate angle between points
+            let angle = Math.atan2(
+              p2.lng() - p1.lng(),
+              p2.lat() - p1.lat()
+            ) * (180 / Math.PI);
+
+            // We're removing the angle rotation to keep labels straight
+            angle = 0;
+            
+            // Create a simple distance label overlay directly (not using DistanceOverlayRef)
+            class SimpleDistanceOverlay extends google.maps.OverlayView {
+              private position: google.maps.LatLng;
+              private content: string;
+              private div: HTMLDivElement | null = null;
+              
+              constructor(position: google.maps.LatLng, content: string) {
+                super();
+                this.position = position;
+                this.content = content;
+              }
+              
+              onAdd() {
+                // Create container div
+                this.div = document.createElement('div');
+                this.div.style.position = 'absolute';
+                this.div.style.backgroundColor = 'transparent';
+                this.div.style.color = 'white';
+                this.div.style.padding = '0';
+                this.div.style.fontSize = '14px';
+                this.div.style.fontWeight = 'bold';
+                this.div.style.textShadow = '0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black, 0px 0px 2px black';
+                this.div.style.zIndex = '1000';
+                this.div.style.userSelect = 'none';
+                this.div.style.whiteSpace = 'nowrap';
+                this.div.style.transform = 'translate(-50%, -50%)';
+                this.div.style.fontFamily = 'Arial, sans-serif';
+                this.div.style.textAlign = 'center';
+                this.div.textContent = this.content;
+                
+                const panes = this.getPanes();
+                panes?.overlayLayer.appendChild(this.div);
+              }
+              
+              draw() {
+                const overlayProjection = this.getProjection();
+                if (!overlayProjection || !this.div) return;
+                
+                const position = overlayProjection.fromLatLngToDivPixel(
+                  new google.maps.LatLng(this.position.lat, this.position.lng)
+                );
+                
+                if (position) {
+                  this.div.style.left = position.x + 'px';
+                  this.div.style.top = position.y + 'px';
+                }
+              }
+              
+              onRemove() {
+                if (this.div) {
+                  this.div.parentNode?.removeChild(this.div);
+                  this.div = null;
+                }
+              }
+            }
+            
+            // Create and add the simple distance overlay
+            const overlay = new SimpleDistanceOverlay(midpoint, distanceText);
+            overlay.setMap(map);
+            newEdgeMarkers.push(overlay as unknown as google.maps.OverlayView);
+            
+            // Create a clickable edge marker at midpoint
+            const edgeMarker = new google.maps.Marker({
+              position: midpoint,
+              map: map,
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: circleScale,
+                fillColor: '#FFFFFF',
+                fillOpacity: 0.5,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 2,
+              },
+              draggable: false,
+              zIndex: 2
+            });
+            
+            newEdgeMarkers.push(edgeMarker);
+          }
+          
+                  // Store the edge markers on the polygon for later cleanup
+        polygon.set('edgeMarkers', newEdgeMarkers);
+      };
+      
+      // Store the addEdgeMarkers function on the polygon for access by other functions
+      polygon.set('addEdgeMarkers', addEdgeMarkers);
+      
+      // Add edge markers with distance labels
+      addEdgeMarkers();
+      
+      // Update edge markers when polygon path changes
+      google.maps.event.addListener(polygon.getPath(), 'set_at', addEdgeMarkers);
+      google.maps.event.addListener(polygon.getPath(), 'insert_at', addEdgeMarkers);
+      google.maps.event.addListener(polygon.getPath(), 'remove_at', addEdgeMarkers);
       }
       
       // When entering edit mode, hide the selection panel with Edit/Move buttons
@@ -2699,6 +2844,20 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         pathListeners.forEach((listener: google.maps.MapsEventListener) => {
           google.maps.event.removeListener(listener);
         });
+        
+        // Remove edge marker listeners
+        google.maps.event.clearListeners(polygon.getPath(), 'set_at');
+        google.maps.event.clearListeners(polygon.getPath(), 'insert_at');
+        google.maps.event.clearListeners(polygon.getPath(), 'remove_at');
+        
+        // Remove all edge markers
+        const edgeMarkers = polygon.get('edgeMarkers') || [];
+        edgeMarkers.forEach((marker: google.maps.Marker | google.maps.OverlayView) => {
+          marker.setMap(null);
+        });
+        
+        // Clear edge markers array
+        polygon.set('edgeMarkers', []);
       }
         
       // Show/hide markers based on editable state
@@ -3534,6 +3693,317 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     }
   }, [isMergeMode, fieldPolygons, polygonsToMerge, strokeWeight, strokeColor]);
   
+  // Helper function to calculate the overlap between two bounds
+  const calculateBoundsOverlap = useCallback((bounds1: google.maps.LatLngBounds, bounds2: google.maps.LatLngBounds): google.maps.LatLngBounds | null => {
+    const ne1 = bounds1.getNorthEast();
+    const sw1 = bounds1.getSouthWest();
+    const ne2 = bounds2.getNorthEast();
+    const sw2 = bounds2.getSouthWest();
+    
+    // Check if bounds overlap
+    if (ne1.lng() < sw2.lng() || ne2.lng() < sw1.lng() || ne1.lat() < sw2.lat() || ne2.lat() < sw1.lat()) {
+      return null; // No overlap
+    }
+    
+    // Calculate overlap bounds
+    const overlapBounds = new google.maps.LatLngBounds();
+    overlapBounds.extend(new google.maps.LatLng(
+      Math.min(ne1.lat(), ne2.lat()),
+      Math.min(ne1.lng(), ne2.lng())
+    ));
+    overlapBounds.extend(new google.maps.LatLng(
+      Math.max(sw1.lat(), sw2.lat()),
+      Math.max(sw1.lng(), sw2.lng())
+    ));
+    
+    return overlapBounds;
+  }, []);
+  
+  // Helper function to calculate the approximate area of a bounds
+  const calculateBoundsArea = useCallback((bounds: google.maps.LatLngBounds): number => {
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const width = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(ne.lat(), sw.lng()),
+      new google.maps.LatLng(ne.lat(), ne.lng())
+    );
+    const height = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(sw.lat(), sw.lng()),
+      new google.maps.LatLng(ne.lat(), sw.lng())
+    );
+    return width * height;
+  }, []);
+  
+  // Function to compute the convex hull of a set of points (Graham scan algorithm)
+  const computeConvexHull = useCallback((points: google.maps.LatLng[]): google.maps.LatLng[] => {
+    if (points.length <= 3) return points;
+    
+    // Find the point with the lowest y-coordinate (and leftmost if tied)
+    let lowestPoint = points[0];
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].lat() < lowestPoint.lat() || 
+          (points[i].lat() === lowestPoint.lat() && points[i].lng() < lowestPoint.lng())) {
+        lowestPoint = points[i];
+      }
+    }
+    
+    // Sort points by polar angle with respect to the lowest point
+    const sortedPoints = [...points].sort((a, b) => {
+      if (a === lowestPoint) return -1;
+      if (b === lowestPoint) return 1;
+      
+      const angleA = Math.atan2(a.lat() - lowestPoint.lat(), a.lng() - lowestPoint.lng());
+      const angleB = Math.atan2(b.lat() - lowestPoint.lat(), b.lng() - lowestPoint.lng());
+      
+      if (angleA < angleB) return -1;
+      if (angleA > angleB) return 1;
+      
+      // If angles are the same, take the point that's further from lowestPoint
+      const distA = (a.lat() - lowestPoint.lat()) ** 2 + (a.lng() - lowestPoint.lng()) ** 2;
+      const distB = (b.lat() - lowestPoint.lat()) ** 2 + (b.lng() - lowestPoint.lng()) ** 2;
+      
+      return distB - distA;
+    });
+    
+    // Remove duplicate points
+    const uniquePoints = [sortedPoints[0]];
+    for (let i = 1; i < sortedPoints.length; i++) {
+      if (sortedPoints[i].lat() !== sortedPoints[i-1].lat() || 
+          sortedPoints[i].lng() !== sortedPoints[i-1].lng()) {
+        uniquePoints.push(sortedPoints[i]);
+      }
+    }
+    
+    // Graham scan algorithm
+    if (uniquePoints.length <= 3) return uniquePoints;
+    
+    const hull = [uniquePoints[0], uniquePoints[1]];
+    
+    for (let i = 2; i < uniquePoints.length; i++) {
+      while (hull.length >= 2 && !isLeftTurn(hull[hull.length - 2], hull[hull.length - 1], uniquePoints[i])) {
+        hull.pop();
+      }
+      hull.push(uniquePoints[i]);
+    }
+    
+    return hull;
+  }, []);
+  
+  // Helper function for convex hull algorithm to determine if three points make a left turn
+  const isLeftTurn = useCallback((p1: google.maps.LatLng, p2: google.maps.LatLng, p3: google.maps.LatLng): boolean => {
+    const cross = (p2.lng() - p1.lng()) * (p3.lat() - p1.lat()) - 
+                 (p2.lat() - p1.lat()) * (p3.lng() - p1.lng());
+    return cross > 0;
+  }, []);
+  
+  // Helper function to find the intersection point of two edges
+  const findEdgeIntersection = useCallback(
+    (p1: google.maps.LatLng, p2: google.maps.LatLng, p3: google.maps.LatLng, p4: google.maps.LatLng): google.maps.LatLng | null => {
+      // Convert to cartesian coordinates for easier calculation
+      const x1 = p1.lng(), y1 = p1.lat();
+      const x2 = p2.lng(), y2 = p2.lat();
+      const x3 = p3.lng(), y3 = p3.lat();
+      const x4 = p4.lng(), y4 = p4.lat();
+      
+      // Calculate the denominator
+      const denominator = ((y4 - y3) * (x2 - x1)) - ((x4 - x3) * (y2 - y1));
+      
+      // If denominator is 0, lines are parallel
+      if (denominator === 0) return null;
+      
+      // Calculate ua and ub
+      const ua = (((x4 - x3) * (y1 - y3)) - ((y4 - y3) * (x1 - x3))) / denominator;
+      const ub = (((x2 - x1) * (y1 - y3)) - ((y2 - y1) * (x1 - x3))) / denominator;
+      
+      // If ua and ub are between 0-1, lines are intersecting
+      if (ua < 0 || ua > 1 || ub < 0 || ub > 1) return null;
+      
+      // Calculate the intersection point
+      const x = x1 + (ua * (x2 - x1));
+      const y = y1 + (ua * (y2 - y1));
+      
+      return new google.maps.LatLng(y, x);
+    }, []);
+  
+  // Helper function to combine polygon paths while preserving edges
+  const combinePolygonPaths = useCallback((polygonPaths: google.maps.LatLng[][]): google.maps.LatLng[] => {
+    if (polygonPaths.length === 0) return [];
+    if (polygonPaths.length === 1) return polygonPaths[0];
+    
+    // Implementation of a polygon union algorithm that preserves original edges
+    // Start with the first polygon
+    let result = [...polygonPaths[0]];
+    
+    // For each additional polygon, merge it with the result
+    for (let i = 1; i < polygonPaths.length; i++) {
+      const currentPolygon = polygonPaths[i];
+      
+      // Find all intersection points between the current result and the new polygon
+      const intersections: {point: google.maps.LatLng, edge1Index: number, edge2Index: number}[] = [];
+      
+      // Check each edge of the first polygon against each edge of the second polygon
+      for (let j = 0; j < result.length - 1; j++) {
+        const edge1Start = result[j];
+        const edge1End = result[j + 1];
+        
+        for (let k = 0; k < currentPolygon.length - 1; k++) {
+          const edge2Start = currentPolygon[k];
+          const edge2End = currentPolygon[k + 1];
+          
+          // Check if these edges intersect
+          const intersection = findEdgeIntersection(
+            edge1Start, edge1End,
+            edge2Start, edge2End
+          );
+          
+          if (intersection) {
+            intersections.push({
+              point: intersection,
+              edge1Index: j,
+              edge2Index: k
+            });
+          }
+        }
+      }
+      
+      // If no intersections, the polygons don't overlap
+      if (intersections.length === 0 || intersections.length < 2) {
+        // Just add all points from both polygons if no proper overlap
+        result = [...result, ...currentPolygon];
+        continue;
+      }
+      
+      // We need at least 2 intersection points to properly merge polygons
+      if (intersections.length >= 2) {
+        // Sort intersections by their position along the edges of the first polygon
+        intersections.sort((a, b) => {
+          if (a.edge1Index !== b.edge1Index) {
+            return a.edge1Index - b.edge1Index;
+          }
+          
+          // If on same edge, calculate distance from start of edge
+          const edgeStart = result[a.edge1Index];
+          const distA = google.maps.geometry.spherical.computeDistanceBetween(edgeStart, a.point);
+          const distB = google.maps.geometry.spherical.computeDistanceBetween(edgeStart, b.point);
+          return distA - distB;
+        });
+        
+        // Create a new path that follows the outer boundary of both polygons
+        const newPath: google.maps.LatLng[] = [];
+        
+        // For proper merging, we need to identify entry and exit points
+        // We'll use the first and last intersection as our entry/exit points
+        const entryPoint = intersections[0];
+        const exitPoint = intersections[intersections.length - 1];
+        
+        // Start at the entry intersection point
+        newPath.push(entryPoint.point);
+        
+        // Follow the first polygon from entry to exit
+        let currentIndex = entryPoint.edge1Index + 1;
+        while (currentIndex <= exitPoint.edge1Index) {
+          if (currentIndex < result.length) {
+            newPath.push(result[currentIndex]);
+          }
+          currentIndex++;
+        }
+        
+        // Add the exit point
+        newPath.push(exitPoint.point);
+        
+        // Now follow the second polygon from exit back to entry
+        // We need to go in the reverse direction through the second polygon
+        let polygon2Length = currentPolygon.length;
+        
+        // Calculate the correct path through the second polygon
+        // This is the tricky part - we need to determine which way to go
+        // We'll go from exit to entry in the appropriate direction
+        
+        // First, determine if we should go forward or backward through the second polygon
+        // by checking which path is shorter
+        const forwardPath: google.maps.LatLng[] = [];
+        const backwardPath: google.maps.LatLng[] = [];
+        
+        // Forward path (exit to entry)
+        currentIndex = exitPoint.edge2Index + 1;
+        let tempIndex = currentIndex;
+        while (tempIndex !== entryPoint.edge2Index) {
+          if (tempIndex >= polygon2Length) tempIndex = 0;
+          forwardPath.push(currentPolygon[tempIndex]);
+          tempIndex++;
+          // Safety check to prevent infinite loop
+          if (forwardPath.length > polygon2Length * 2) break;
+        }
+        
+        // Backward path (exit to entry)
+        currentIndex = exitPoint.edge2Index;
+        tempIndex = currentIndex;
+        while (tempIndex !== entryPoint.edge2Index + 1) {
+          if (tempIndex < 0) tempIndex = polygon2Length - 1;
+          backwardPath.push(currentPolygon[tempIndex]);
+          tempIndex--;
+          // Safety check to prevent infinite loop
+          if (backwardPath.length > polygon2Length * 2) break;
+        }
+        
+        // Choose the shorter path
+        const pathToUse = forwardPath.length <= backwardPath.length ? forwardPath : backwardPath;
+        
+        // Add the chosen path to our result
+        pathToUse.forEach(point => newPath.push(point));
+        
+        // Close the loop by returning to the entry point
+        if (newPath[0].lat() !== newPath[newPath.length - 1].lat() || 
+            newPath[0].lng() !== newPath[newPath.length - 1].lng()) {
+          newPath.push(newPath[0]);
+        }
+        
+        // Update the result for the next iteration
+        result = newPath;
+      }
+    }
+    
+    return result;
+  }, [findEdgeIntersection]);
+  
+  // Helper function to check if polygons have significant overlap
+  const checkForSignificantOverlap = useCallback((polygonPaths: google.maps.LatLng[][]): boolean => {
+    if (polygonPaths.length < 2) return false;
+    
+    // Calculate bounding boxes for each polygon
+    const bounds: google.maps.LatLngBounds[] = [];
+    
+    for (const path of polygonPaths) {
+      const bound = new google.maps.LatLngBounds();
+      for (const point of path) {
+        bound.extend(point);
+      }
+      bounds.push(bound);
+    }
+    
+    // Check for overlap between bounding boxes
+    for (let i = 0; i < bounds.length; i++) {
+      for (let j = i + 1; j < bounds.length; j++) {
+        // Calculate overlap area
+        const overlapBounds = calculateBoundsOverlap(bounds[i], bounds[j]);
+        if (overlapBounds) {
+          // Calculate the area of overlap relative to the smaller polygon
+          const overlapArea = calculateBoundsArea(overlapBounds);
+          const area1 = calculateBoundsArea(bounds[i]);
+          const area2 = calculateBoundsArea(bounds[j]);
+          const smallerArea = Math.min(area1, area2);
+          
+          // If overlap is more than 30% of the smaller polygon, consider it significant
+          if (overlapArea / smallerArea > 0.3) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  }, [calculateBoundsOverlap, calculateBoundsArea]);
+  
   // Function to merge selected polygons
   const handleMergePolygons = useCallback(() => {
     if (polygonsToMerge.length < 2) {
@@ -3549,25 +4019,41 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
       
       if (polygonsToMergeObjects.length < 2) return;
       
-      // Create a union of all the polygons
-      // We'll use a simple approach: collect all vertices from all polygons
-      const allVertices: google.maps.LatLng[] = [];
+      // Create a more precise union of polygons that preserves edge positions
+      // Instead of using a simple convex hull, we'll create a more accurate representation
       
-      // Get all vertices from all polygons
+      // First, collect all vertices from all polygons with their original positions
+      const allVertices: google.maps.LatLng[] = [];
+      const polygonPaths: google.maps.LatLng[][] = [];
+      
+      // Get all vertices from all polygons and preserve their paths
       polygonsToMergeObjects.forEach(polygon => {
         const path = polygon.getPath();
+        const vertices: google.maps.LatLng[] = [];
+        
         for (let i = 0; i < path.getLength(); i++) {
-          allVertices.push(path.getAt(i));
+          const point = path.getAt(i);
+          vertices.push(point);
+          allVertices.push(point);
         }
+        
+        // Add the first point again to close the loop if needed
+        if (vertices.length > 0 && 
+            (vertices[0].lat() !== vertices[vertices.length - 1].lat() || 
+             vertices[0].lng() !== vertices[vertices.length - 1].lng())) {
+          vertices.push(vertices[0]);
+        }
+        
+        polygonPaths.push(vertices);
       });
       
-      // Create a convex hull from all vertices
-      // This is a simplified approach - for more complex merges, we'd need a proper geometric library
-      const convexHull = computeConvexHull(allVertices);
+      // Always use the edge-preserving algorithm to maintain original field boundaries
+      // except at the overlapping sections
+      let mergedPath: google.maps.LatLng[] = combinePolygonPaths(polygonPaths);
       
       // Create a new polygon with the merged vertices
       const mergedPolygon = new google.maps.Polygon({
-        paths: convexHull,
+        paths: mergedPath,
         strokeColor: polygonsToMergeObjects[0].get('strokeColor') || strokeColor,
         strokeWeight: strokeWeight,
         fillColor: polygonsToMergeObjects[0].get('fillColor') || polygonColor,
@@ -3663,69 +4149,17 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     } catch (error) {
       console.error('Error merging polygons:', error);
     }
-  }, [polygonsToMerge, fieldPolygons, map, strokeColor, strokeWeight, polygonColor, polygonFillOpacity, user]);
-  
-  // Function to compute the convex hull of a set of points (Graham scan algorithm)
-  const computeConvexHull = useCallback((points: google.maps.LatLng[]): google.maps.LatLng[] => {
-    if (points.length <= 3) return points;
-    
-    // Find the point with the lowest y-coordinate (and leftmost if tied)
-    let lowestPoint = points[0];
-    for (let i = 1; i < points.length; i++) {
-      if (points[i].lat() < lowestPoint.lat() || 
-          (points[i].lat() === lowestPoint.lat() && points[i].lng() < lowestPoint.lng())) {
-        lowestPoint = points[i];
-      }
-    }
-    
-    // Sort points by polar angle with respect to the lowest point
-    const sortedPoints = [...points].sort((a, b) => {
-      if (a === lowestPoint) return -1;
-      if (b === lowestPoint) return 1;
-      
-      const angleA = Math.atan2(a.lat() - lowestPoint.lat(), a.lng() - lowestPoint.lng());
-      const angleB = Math.atan2(b.lat() - lowestPoint.lat(), b.lng() - lowestPoint.lng());
-      
-      if (angleA < angleB) return -1;
-      if (angleA > angleB) return 1;
-      
-      // If angles are the same, take the point that's further from lowestPoint
-      const distA = (a.lat() - lowestPoint.lat()) ** 2 + (a.lng() - lowestPoint.lng()) ** 2;
-      const distB = (b.lat() - lowestPoint.lat()) ** 2 + (b.lng() - lowestPoint.lng()) ** 2;
-      
-      return distB - distA;
-    });
-    
-    // Remove duplicate points
-    const uniquePoints = [sortedPoints[0]];
-    for (let i = 1; i < sortedPoints.length; i++) {
-      if (sortedPoints[i].lat() !== sortedPoints[i-1].lat() || 
-          sortedPoints[i].lng() !== sortedPoints[i-1].lng()) {
-        uniquePoints.push(sortedPoints[i]);
-      }
-    }
-    
-    // Graham scan algorithm
-    if (uniquePoints.length <= 3) return uniquePoints;
-    
-    const hull = [uniquePoints[0], uniquePoints[1]];
-    
-    for (let i = 2; i < uniquePoints.length; i++) {
-      while (hull.length >= 2 && !isLeftTurn(hull[hull.length - 2], hull[hull.length - 1], uniquePoints[i])) {
-        hull.pop();
-      }
-      hull.push(uniquePoints[i]);
-    }
-    
-    return hull;
-  }, []);
-  
-  // Helper function for convex hull algorithm to determine if three points make a left turn
-  const isLeftTurn = useCallback((p1: google.maps.LatLng, p2: google.maps.LatLng, p3: google.maps.LatLng): boolean => {
-    const cross = (p2.lng() - p1.lng()) * (p3.lat() - p1.lat()) - 
-                 (p2.lat() - p1.lat()) * (p3.lng() - p1.lng());
-    return cross > 0;
-  }, []);
+  }, [
+    polygonsToMerge, 
+    fieldPolygons, 
+    map, 
+    strokeColor, 
+    strokeWeight, 
+    polygonColor, 
+    polygonFillOpacity, 
+    user, 
+    combinePolygonPaths
+  ]);
 
   // Add a function to handle cancelling the drawing
   const handleCancelDrawing = useCallback(() => {
