@@ -33,7 +33,8 @@ import {
   faPen,
   faEllipsisV,
   faObjectGroup,
-  faObjectUngroup
+  faObjectUngroup,
+  faFileAlt
 } from '@fortawesome/free-solid-svg-icons';
 import SearchBox from './SearchBox';
 import PolygonToolsMenu from './PolygonToolsMenu';
@@ -44,10 +45,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { uploadFieldImage, deleteFieldImage, getFieldImageUrl } from '@/app/lib/storage';
 import DistanceMeasurement from './DistanceMeasurement';
 import MarkerComponent from './MarkerComponent';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getAggregateFromServer, getDocs, query, where } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { MarkerData } from './types';
 import FieldImageGallery from './FieldImageGallery';
+import FieldDetailsForm from './FieldDetailsForm';
+import { saveFieldOwnerDetails, getFieldOwnerDetails } from '../../lib/firebase';
+import { FieldFormData } from './FieldDetailsForm';
 
 // Local utility function for className merging
 function cn(...classNames: (string | undefined)[]) {
@@ -5973,6 +5977,52 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
     };
   }, [fieldPolygons, map, handlePolygonClick, selectedPolygonIndex, isSelectedPolygonEditable, isSelectedPolygonDraggable]);
 
+  // Add state for field details form
+  const [showFieldDetailsForm, setShowFieldDetailsForm] = useState(false);
+
+  // ... existing code ...
+  {/* Form button - icon only */}
+  <button
+    onClick={() => {
+      if (selectedPolygonIndex !== null) {
+        const polygon = fieldPolygons[selectedPolygonIndex];
+        const fieldId = polygon.get('fieldId');
+        if (fieldId) {
+          setShowFieldDetailsForm(true);
+        } else {
+          console.error("Field ID not found");
+          alert("Cannot open form: Field ID not found");
+        }
+      }
+    }}
+    className="p-2 text-white hover:text-yellow-200 transition-colors"
+    title="Field Form"
+  >
+    <FontAwesomeIcon icon={faFileAlt} className="text-lg" />
+  </button>
+  // ... existing code ...
+
+  // ... existing code ...
+  {/* Add the FieldDetailsForm */}
+  {showFieldDetailsForm && selectedPolygonIndex !== null && (
+    <FieldDetailsForm
+      isOpen={showFieldDetailsForm}
+      onClose={() => setShowFieldDetailsForm(false)}
+      fieldId={fieldPolygons[selectedPolygonIndex].get('fieldId') || null}
+      fieldName={fieldPolygons[selectedPolygonIndex].get('fieldName') || 'Unnamed Field'}
+      onSave={async (formData: FieldFormData) => {
+        try {
+          await saveFieldOwnerDetails(formData);
+          return Promise.resolve();
+        } catch (error) {
+          console.error("Error saving field details:", error);
+          return Promise.reject(error);
+        }
+      }}
+    />
+  )}
+  // ... existing code ...
+
   if (!isClient) {
     return <div className={cn("h-full w-full", className)} />;
   }
@@ -6021,7 +6071,25 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
                     <FontAwesomeIcon icon={faPencilAlt} className="text-lg" />
                   </button>
                   
-                  {/* Move field button removed - moved to advanced tools dropdown */}
+                  {/* Form button - icon only */}
+                  <button
+                    onClick={() => {
+                      if (selectedPolygonIndex !== null) {
+                        const polygon = fieldPolygons[selectedPolygonIndex];
+                        const fieldId = polygon.get('fieldId');
+                        if (fieldId) {
+                          setShowFieldDetailsForm(true);
+                        } else {
+                          console.error("Field ID not found");
+                          alert("Cannot open form: Field ID not found");
+                        }
+                      }
+                    }}
+                    className="p-2 text-white hover:text-yellow-200 transition-colors"
+                    title="Field Form"
+                  >
+                    <FontAwesomeIcon icon={faFileAlt} className="text-lg" />
+                  </button>
                   
                   {/* Delete field button - icon only */}
                   <button
@@ -6737,6 +6805,25 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
         onExit={handleExitMarkerMode}
         onPositionUpdate={saveLastPosition}
       />
+
+      {/* Add the FieldDetailsForm */}
+      {showFieldDetailsForm && selectedPolygonIndex !== null && (
+        <FieldDetailsForm
+          isOpen={showFieldDetailsForm}
+          onClose={() => setShowFieldDetailsForm(false)}
+          fieldId={fieldPolygons[selectedPolygonIndex].get('fieldId') || null}
+          fieldName={fieldPolygons[selectedPolygonIndex].get('fieldName') || 'Unnamed Field'}
+          onSave={async (formData: FieldFormData) => {
+            try {
+              await saveFieldOwnerDetails(formData);
+              return Promise.resolve();
+            } catch (error) {
+              console.error("Error saving field details:", error);
+              return Promise.reject(error);
+            }
+          }}
+        />
+      )}
     </LoadScript>
   );
 };

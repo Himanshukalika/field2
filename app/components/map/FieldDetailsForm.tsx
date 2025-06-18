@@ -1,0 +1,702 @@
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faTimes, faUpload, faImage, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { getFieldOwnerDetails } from '../../lib/firebase';
+
+interface FieldDetailsFormProps {
+  isOpen: boolean;
+  onClose: () => void;
+  fieldId: string | null;
+  fieldName: string;
+  onSave: (fieldData: FieldFormData) => Promise<void>;
+}
+
+export interface FieldFormData {
+  ownerPhoto: string | null;
+  name: string;
+  fathersName: string;
+  permanentAddress: string;
+  temporaryAddress: string;
+  propertyAddress: string;
+  propertyGroup: string;
+  documentType: string;
+  dlcRate: string;
+  roadFront: string;
+  roadFrontUnit: string;
+  propertyArea: string;
+  propertyAreaUnit: string;
+  propertySideLength: string;
+  propertyFacing: string;
+  mobile: string;
+  alternativeNumber: string;
+  emailId: string;
+  whatsappNumber: string;
+  aadharNumber: string;
+  aadharFrontPhoto: string | null;
+  aadharBackPhoto: string | null;
+  landRecordPhoto: string | null;
+  fieldId: string | null;
+}
+
+const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
+  isOpen,
+  onClose,
+  fieldId,
+  fieldName,
+  onSave
+}) => {
+  const [formData, setFormData] = useState<FieldFormData>({
+    ownerPhoto: null,
+    name: '',
+    fathersName: '',
+    permanentAddress: '',
+    temporaryAddress: '',
+    propertyAddress: fieldName || '',
+    propertyGroup: 'agriculture',
+    documentType: 'govt.zammbandi',
+    dlcRate: '',
+    roadFront: '',
+    roadFrontUnit: 'running_foot',
+    propertyArea: '',
+    propertyAreaUnit: 'square_meter',
+    propertySideLength: '',
+    propertyFacing: '',
+    mobile: '',
+    alternativeNumber: '',
+    emailId: '',
+    whatsappNumber: '',
+    aadharNumber: '',
+    aadharFrontPhoto: null,
+    aadharBackPhoto: null,
+    landRecordPhoto: null,
+    fieldId: fieldId
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Load existing field details when the form is opened
+  useEffect(() => {
+    const loadFieldDetails = async () => {
+      if (fieldId && isOpen) {
+        setIsLoading(true);
+        try {
+          const details = await getFieldOwnerDetails(fieldId);
+          if (details) {
+            setFormData({
+              ...details,
+              propertyAddress: details.propertyAddress || fieldName || '',
+              fieldId: fieldId
+            });
+          }
+        } catch (error) {
+          console.error("Error loading field details:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setIsLoading(false);
+      }
+    };
+
+    loadFieldDetails();
+  }, [fieldId, isOpen, fieldName]);
+
+  // Close the modal when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+
+  // Reset success message after showing
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (saveSuccess) {
+      timer = setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [saveSuccess]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'ownerPhoto' | 'aadharFrontPhoto' | 'aadharBackPhoto' | 'landRecordPhoto'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData(prev => ({
+        ...prev,
+        [field]: reader.result as string
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      await onSave(formData);
+      setSaveSuccess(true);
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error("Error saving field details:", error);
+      alert("Failed to save field details. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] overflow-y-auto p-0 sm:p-2 md:p-6">
+      <div 
+        ref={modalRef}
+        className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative my-2 mx-auto"
+      >
+        {/* Header */}
+        <div className="bg-blue-600 p-3 sm:p-4 text-white flex justify-between items-center sticky top-0 z-10">
+          <h2 className="text-base sm:text-lg md:text-xl font-semibold truncate">{fieldName}</h2>
+          <button 
+            onClick={onClose}
+            className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0"
+          >
+            <FontAwesomeIcon icon={faTimes} />
+          </button>
+        </div>
+
+        {/* Success message */}
+        {saveSuccess && (
+          <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-3 sm:p-4 mb-2 sm:mb-4">
+            <div className="flex items-center">
+              <FontAwesomeIcon icon={faCheck} className="mr-2" />
+              <p>Field details saved successfully!</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Loading indicator */}
+        {isLoading ? (
+          <div className="p-4 sm:p-6 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-2"></div>
+            <p>Loading field details...</p>
+          </div>
+        ) : (
+          /* Form */
+          <form onSubmit={handleSubmit} className="p-3 sm:p-4 md:p-6">
+            <div className="grid grid-cols-1 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                {/* Owner Photo */}
+                <div className="flex flex-col items-center">
+                  <label className="block mb-2 text-sm font-medium text-gray-700 self-start">
+                    Owner Photo
+                  </label>
+                  <div className="w-32 h-32 sm:w-40 sm:h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center mb-2 overflow-hidden relative">
+                    {formData.ownerPhoto ? (
+                      <img 
+                        src={formData.ownerPhoto} 
+                        alt="Owner" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FontAwesomeIcon icon={faImage} className="text-gray-400 text-3xl sm:text-4xl" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => document.getElementById('ownerPhoto')?.click()}
+                    className="text-sm text-blue-600 hover:underline flex items-center"
+                  >
+                    <FontAwesomeIcon icon={faUpload} className="mr-1" />
+                    Upload Photo
+                  </button>
+                  <input
+                    id="ownerPhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
+                    className="hidden"
+                  />
+                </div>
+
+                {/* Basic Info */}
+                <div>
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Owner's name"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Father's Name
+                    </label>
+                    <input
+                      type="text"
+                      name="fathersName"
+                      value={formData.fathersName}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Father's name"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Group
+                    </label>
+                    <select
+                      name="propertyGroup"
+                      value={formData.propertyGroup}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="agriculture">Agriculture</option>
+                      <option value="commercial">Commercial</option>
+                      <option value="residential">Residential</option>
+                      <option value="industrial">Industrial</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Contact Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Mobile Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="mobile"
+                      value={formData.mobile}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Mobile number"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Alternative Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="alternativeNumber"
+                      value={formData.alternativeNumber}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Alternative number"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      WhatsApp Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="whatsappNumber"
+                      value={formData.whatsappNumber}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="WhatsApp number"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Email ID
+                    </label>
+                    <input
+                      type="email"
+                      name="emailId"
+                      value={formData.emailId}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Email address"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Address Information */}
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Address Information</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Permanent Address (ID Address)
+                    </label>
+                    <textarea
+                      name="permanentAddress"
+                      value={formData.permanentAddress}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Permanent address"
+                      rows={2}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Temporary Address (Residential Address)
+                    </label>
+                    <textarea
+                      name="temporaryAddress"
+                      value={formData.temporaryAddress}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Temporary address"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Address (Polygon Location)
+                    </label>
+                    <textarea
+                      name="propertyAddress"
+                      value={formData.propertyAddress}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Property address"
+                      rows={2}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Property Measurements Section */}
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h3 className="text-md font-medium text-gray-900 mb-3">Property Measurements</h3>
+                  
+                  {/* DLC Rate */}
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property DLC Rate (Per Square Meter)
+                    </label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        name="dlcRate"
+                        value={formData.dlcRate}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-l-md"
+                        placeholder="Enter DLC rate"
+                      />
+                      <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                        ₹/m²
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Road Front */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block mb-1 text-sm font-medium text-gray-700">
+                        Road Front
+                      </label>
+                      <input
+                        type="number"
+                        name="roadFront"
+                        value={formData.roadFront}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="Enter road front"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-sm font-medium text-gray-700">
+                        Unit
+                      </label>
+                      <select
+                        name="roadFrontUnit"
+                        value={formData.roadFrontUnit}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="running_foot">Running Foot</option>
+                        <option value="running_meter">Running Meter</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Property Area */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block mb-1 text-sm font-medium text-gray-700">
+                        Property Area
+                      </label>
+                      <input
+                        type="number"
+                        name="propertyArea"
+                        value={formData.propertyArea}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="Enter property area"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-sm font-medium text-gray-700">
+                        Unit
+                      </label>
+                      <select
+                        name="propertyAreaUnit"
+                        value={formData.propertyAreaUnit}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="square_foot">Square Foot</option>
+                        <option value="square_meter">Square Meter</option>
+                        <option value="square_yard">Square Yard</option>
+                        <option value="square_km">Square Kilometer</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Property Side-wise Length */}
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Side-wise Length
+                    </label>
+                    <input
+                      type="text"
+                      name="propertySideLength"
+                      value={formData.propertySideLength}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="E.g., North: 50m, South: 48m, East: 30m, West: 32m"
+                    />
+                  </div>
+                  
+                  {/* Property Facing */}
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Plot Property Facing
+                    </label>
+                    <select
+                      name="propertyFacing"
+                      value={formData.propertyFacing}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="">Select facing direction</option>
+                      <option value="north">North</option>
+                      <option value="south">South</option>
+                      <option value="east">East</option>
+                      <option value="west">West</option>
+                      <option value="north_east">North-East</option>
+                      <option value="north_west">North-West</option>
+                      <option value="south_east">South-East</option>
+                      <option value="south_west">South-West</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Aadhar Information */}
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Aadhar Information</h3>
+                <div className="mb-4">
+                  <label className="block mb-1 text-sm font-medium text-gray-700">
+                    Aadhar Number
+                  </label>
+                  <input
+                    type="text"
+                    name="aadharNumber"
+                    value={formData.aadharNumber}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    placeholder="12-digit Aadhar number"
+                    required
+                  />
+                </div>
+
+                {/* Aadhar Card Photos */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  {/* Front */}
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Aadhar Card (Front)
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 h-32 flex flex-col items-center justify-center relative">
+                      {formData.aadharFrontPhoto ? (
+                        <img 
+                          src={formData.aadharFrontPhoto} 
+                          alt="Aadhar Front" 
+                          className="max-h-28 max-w-full object-contain"
+                        />
+                      ) : (
+                        <>
+                          <FontAwesomeIcon icon={faUpload} className="text-gray-400 text-xl mb-2" />
+                          <p className="text-xs text-gray-500">Click to upload front side</p>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileUpload(e, 'aadharFrontPhoto')}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Back */}
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Aadhar Card (Back)
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 h-32 flex flex-col items-center justify-center relative">
+                      {formData.aadharBackPhoto ? (
+                        <img 
+                          src={formData.aadharBackPhoto} 
+                          alt="Aadhar Back" 
+                          className="max-h-28 max-w-full object-contain"
+                        />
+                      ) : (
+                        <>
+                          <FontAwesomeIcon icon={faUpload} className="text-gray-400 text-xl mb-2" />
+                          <p className="text-xs text-gray-500">Click to upload back side</p>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileUpload(e, 'aadharBackPhoto')}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Document Type and Upload */}
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Land Records</h3>
+                {/* Document Type Selection */}
+                <div className="mb-4">
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
+                    Document Type
+                  </label>
+                  <select
+                    name="documentType"
+                    value={formData.documentType}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-md mb-4"
+                    required
+                  >
+                    <option value="govt.zammbandi">Govt. Zammbandi</option>
+                    <option value="panchayat_pata">Panchayat Pata</option>
+                    <option value="nagarpalika_pata">Nagarpalika Pata</option>
+                    <option value="development_authority">Development Authority (JDA/BDA/KDA)</option>
+                    <option value="govt_approved_society">Government Approved Society</option>
+                    <option value="riico">Rajasthan State Industrial Development and Investment Corporation Ltd. (RIICO)</option>
+                    <option value="land_convert_document">Government Land Category Convert Document</option>
+                  </select>
+                </div>
+
+                <label className="block mb-2 text-sm font-medium text-gray-700">
+                  Government Land Record ({formData.documentType === 'govt.zammbandi' ? 'Jamabandi Photo' : 'Document Upload'})
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 h-40 flex flex-col items-center justify-center relative">
+                  {formData.landRecordPhoto ? (
+                    <img 
+                      src={formData.landRecordPhoto} 
+                      alt="Land Record" 
+                      className="max-h-36 max-w-full object-contain"
+                    />
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faUpload} className="text-gray-400 text-xl mb-2" />
+                      <p className="text-sm text-gray-500">Click to upload land record document</p>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, 'landRecordPhoto')}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2 sm:px-6 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-full sm:w-auto px-4 py-2 sm:px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Saving...' : 'Save Details'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default FieldDetailsForm; 

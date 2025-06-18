@@ -14,10 +14,12 @@ import {
   serverTimestamp,
   addDoc,
   FirestoreError,
-  DocumentData
+  DocumentData,
+  updateDoc
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { Field } from '../components/map/types';
+import { FieldFormData } from '../components/map/FieldDetailsForm';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -364,8 +366,6 @@ const deleteFieldFromLocalStorage = (fieldId: string): boolean => {
   }
 };
 
-
-
 // Save distance measurement to Firestore (with fallback to local storage if permissions fail)
 export const saveDistanceMeasurement = async (measurementData: Omit<DistanceMeasurementData, 'userId' | 'createdAt' | 'updatedAt'>) => {
   try {
@@ -571,6 +571,80 @@ const deleteDistanceMeasurementFromLocalStorage = (measurementId: string): boole
   } catch (error) {
     console.error('Error deleting distance measurement from localStorage:', error);
     return false;
+  }
+};
+
+// Field owner details functions
+export const saveFieldOwnerDetails = async (fieldData: FieldFormData): Promise<void> => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    const userId = auth.currentUser.uid;
+
+    // Check if we're updating an existing record or creating a new one
+    if (fieldData.fieldId) {
+      // First check if document exists for this field
+      const existingRecordsQuery = query(
+        collection(db, 'fieldOwnerDetails'), 
+        where('userId', '==', userId),
+        where('fieldId', '==', fieldData.fieldId)
+      );
+      
+      const existingRecords = await getDocs(existingRecordsQuery);
+      
+      if (!existingRecords.empty) {
+        // Update existing record
+        const docId = existingRecords.docs[0].id;
+        await updateDoc(doc(db, 'fieldOwnerDetails', docId), {
+          ...fieldData,
+          userId,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        // Create new record
+        await addDoc(collection(db, 'fieldOwnerDetails'), {
+          ...fieldData,
+          userId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } else {
+      throw new Error('Field ID is required');
+    }
+  } catch (error) {
+    console.error('Error saving field owner details:', error);
+    throw error;
+  }
+};
+
+export const getFieldOwnerDetails = async (fieldId: string): Promise<FieldFormData | null> => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    const userId = auth.currentUser.uid;
+    
+    const fieldDetailsQuery = query(
+      collection(db, 'fieldOwnerDetails'),
+      where('userId', '==', userId),
+      where('fieldId', '==', fieldId)
+    );
+    
+    const querySnapshot = await getDocs(fieldDetailsQuery);
+    
+    if (querySnapshot.empty) {
+      return null;
+    }
+    
+    const data = querySnapshot.docs[0].data() as FieldFormData;
+    return data;
+  } catch (error) {
+    console.error('Error getting field owner details:', error);
+    throw error;
   }
 };
 
