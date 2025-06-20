@@ -22,6 +22,11 @@ export interface FieldFormData {
   propertyAddress: string;
   pincode: string;
   propertyGroup: string;
+  colonyName: string;
+  plotNumber: string;
+  blockNumber: string;
+  roadNumber: string;
+  galiNumber: string;
   documentType: string;
   dlcRate: string;
   dlcRateUnit: string;
@@ -63,6 +68,11 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     propertyAddress: fieldName || '',
     pincode: '',
     propertyGroup: 'agriculture',
+    colonyName: '',
+    plotNumber: '',
+    blockNumber: '',
+    roadNumber: '',
+    galiNumber: '',
     documentType: 'govt.zammbandi',
     dlcRate: '',
     dlcRateUnit: 'sqm',
@@ -318,24 +328,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       required
                     />
                   </div>
-
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Group
-                    </label>
-                    <select
-                      name="propertyGroup"
-                      value={formData.propertyGroup}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="agriculture">Agriculture</option>
-                      <option value="commercial">Commercial</option>
-                      <option value="residential">Residential</option>
-                      <option value="industrial">Industrial</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 
@@ -469,6 +461,103 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                 {/* Property Measurements Section */}
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <h3 className="text-md font-medium text-gray-900 mb-3">Property Measurements</h3>
+                  
+                  {/* Property Group */}
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Group
+                    </label>
+                    <select
+                      name="propertyGroup"
+                      value={formData.propertyGroup}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="agriculture">Agriculture</option>
+                      <option value="commercial">Commercial</option>
+                      <option value="residential">Residential</option>
+                      <option value="industrial">Industrial</option>
+                    </select>
+                  </div>
+                  
+                  {/* Urban Property Details - Only visible for commercial, residential, industrial */}
+                  {formData.propertyGroup !== 'agriculture' && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Urban Property Details</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Colony Name
+                          </label>
+                          <input
+                            type="text"
+                            name="colonyName"
+                            value={formData.colonyName}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter colony name"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Plot Number
+                          </label>
+                          <input
+                            type="text"
+                            name="plotNumber"
+                            value={formData.plotNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter plot number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Block Number
+                          </label>
+                          <input
+                            type="text"
+                            name="blockNumber"
+                            value={formData.blockNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter block number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Road Number
+                          </label>
+                          <input
+                            type="text"
+                            name="roadNumber"
+                            value={formData.roadNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter road number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Gali Number
+                          </label>
+                          <input
+                            type="text"
+                            name="galiNumber"
+                            value={formData.galiNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter gali number"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* DLC Rate */}
                   <div className="mb-4">
