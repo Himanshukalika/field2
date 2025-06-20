@@ -20,14 +20,21 @@ export interface FieldFormData {
   permanentAddress: string;
   temporaryAddress: string;
   propertyAddress: string;
+  pincode: string;
   propertyGroup: string;
   documentType: string;
   dlcRate: string;
+  dlcRateUnit: string;
   roadFront: string;
   roadFrontUnit: string;
   propertyArea: string;
   propertyAreaUnit: string;
   propertySideLength: string;
+  northSideLength: string;
+  southSideLength: string;
+  eastSideLength: string;
+  westSideLength: string;
+  sideLengthUnit: string;
   propertyFacing: string;
   mobile: string;
   alternativeNumber: string;
@@ -54,14 +61,21 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     permanentAddress: '',
     temporaryAddress: '',
     propertyAddress: fieldName || '',
+    pincode: '',
     propertyGroup: 'agriculture',
     documentType: 'govt.zammbandi',
     dlcRate: '',
+    dlcRateUnit: 'sqm',
     roadFront: '',
     roadFrontUnit: 'running_foot',
     propertyArea: '',
     propertyAreaUnit: 'square_meter',
     propertySideLength: '',
+    northSideLength: '',
+    southSideLength: '',
+    eastSideLength: '',
+    westSideLength: '',
+    sideLengthUnit: 'm',
     propertyFacing: '',
     mobile: '',
     alternativeNumber: '',
@@ -138,7 +152,25 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Special handling for Aadhar number to add hyphens
+    if (name === 'aadharNumber') {
+      // Remove any non-digit characters
+      const digitsOnly = value.replace(/\D/g, '');
+      // Limit to 12 digits
+      const truncated = digitsOnly.slice(0, 12);
+      // Format with hyphens after every 4 digits
+      let formatted = '';
+      for (let i = 0; i < truncated.length; i++) {
+        if (i > 0 && i % 4 === 0) {
+          formatted += '-';
+        }
+        formatted += truncated[i];
+      }
+      setFormData(prev => ({ ...prev, [name]: formatted }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleFileUpload = (
@@ -417,6 +449,21 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       required
                     />
                   </div>
+
+                  <div className="mt-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter pincode"
+                      maxLength={6}
+                    />
+                  </div>
                 </div>
 
                 {/* Property Measurements Section */}
@@ -426,7 +473,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   {/* DLC Rate */}
                   <div className="mb-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property DLC Rate (Per Square Meter)
+                      Property DLC Rate
                     </label>
                     <div className="flex">
                       <input
@@ -437,89 +484,72 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         className="w-full p-2 border border-gray-300 rounded-l-md"
                         placeholder="Enter DLC rate"
                       />
-                      <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
-                        ₹/m²
-                      </span>
+                      <select
+                        name="dlcRateUnit"
+                        value={formData.dlcRateUnit}
+                        onChange={handleInputChange}
+                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                      >
+                        <option value="sqm">₹/m²</option>
+                        <option value="sqft">₹/ft²</option>
+                        <option value="sqyd">₹/yd²</option>
+                        <option value="ha">₹/ha</option>
+                      </select>
                     </div>
                   </div>
                   
                   {/* Road Front */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">
-                        Road Front
-                      </label>
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Road Front
+                    </label>
+                    <div className="flex">
                       <input
                         type="number"
                         name="roadFront"
                         value={formData.roadFront}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-l-md"
                         placeholder="Enter road front"
                       />
-                    </div>
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">
-                        Unit
-                      </label>
                       <select
                         name="roadFrontUnit"
                         value={formData.roadFrontUnit}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
                       >
-                        <option value="running_foot">Running Foot</option>
-                        <option value="running_meter">Running Meter</option>
+                        <option value="running_foot">ft</option>
+                        <option value="running_meter">m</option>
                       </select>
                     </div>
                   </div>
                   
                   {/* Property Area */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">
-                        Property Area
-                      </label>
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Area
+                    </label>
+                    <div className="flex">
                       <input
                         type="number"
                         name="propertyArea"
                         value={formData.propertyArea}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="w-full p-2 border border-gray-300 rounded-l-md"
                         placeholder="Enter property area"
                       />
-                    </div>
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">
-                        Unit
-                      </label>
                       <select
                         name="propertyAreaUnit"
                         value={formData.propertyAreaUnit}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
                       >
-                        <option value="square_foot">Square Foot</option>
-                        <option value="square_meter">Square Meter</option>
-                        <option value="square_yard">Square Yard</option>
-                        <option value="square_km">Square Kilometer</option>
+                        <option value="square_foot">ft²</option>
+                        <option value="square_meter">m²</option>
+                        <option value="square_yard">yd²</option>
+                        <option value="square_km">km²</option>
                       </select>
                     </div>
-                  </div>
-                  
-                  {/* Property Side-wise Length */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Side-wise Length
-                    </label>
-                    <input
-                      type="text"
-                      name="propertySideLength"
-                      value={formData.propertySideLength}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="E.g., North: 50m, South: 48m, East: 30m, West: 32m"
-                    />
                   </div>
                   
                   {/* Property Facing */}
@@ -560,7 +590,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     value={formData.aadharNumber}
                     onChange={handleInputChange}
                     className="w-full p-2 border border-gray-300 rounded-md"
-                    placeholder="12-digit Aadhar number"
+                    placeholder="XXXX-XXXX-XXXX"
+                    maxLength={14}
                     required
                   />
                 </div>
