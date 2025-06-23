@@ -10,6 +10,7 @@ interface FieldDetailsFormProps {
   onClose: () => void;
   fieldId: string | null;
   fieldName: string;
+  fieldCoordinates?: { lat: number; lng: number }[];
   onSave: (fieldData: FieldFormData) => Promise<void>;
 }
 
@@ -22,6 +23,7 @@ export interface FieldFormData {
   propertyAddress: string;
   pincode: string;
   propertyGroup: string;
+  govtPropertyType: string;
   colonyName: string;
   plotNumber: string;
   blockNumber: string;
@@ -57,6 +59,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
   onClose,
   fieldId,
   fieldName,
+  fieldCoordinates,
   onSave
 }) => {
   const [formData, setFormData] = useState<FieldFormData>({
@@ -68,6 +71,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     propertyAddress: fieldName || '',
     pincode: '',
     propertyGroup: 'agriculture',
+    govtPropertyType: '',
     colonyName: '',
     plotNumber: '',
     blockNumber: '',
@@ -110,25 +114,100 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
         setIsLoading(true);
         try {
           const details = await getFieldOwnerDetails(fieldId);
+          
+          // Format center coordinate for display if available
+          let propertyAddressWithCoordinates = fieldName || '';
+          if (fieldCoordinates && fieldCoordinates.length > 0) {
+            // Calculate center coordinate
+            let centerLat = 0;
+            let centerLng = 0;
+            
+            fieldCoordinates.forEach(coord => {
+              centerLat += coord.lat;
+              centerLng += coord.lng;
+            });
+            
+            centerLat /= fieldCoordinates.length;
+            centerLng /= fieldCoordinates.length;
+            
+            // Format the center coordinate
+            const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
+            propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+          }
+          
           if (details) {
             setFormData({
               ...details,
-              propertyAddress: details.propertyAddress || fieldName || '',
+              propertyAddress: details.propertyAddress || propertyAddressWithCoordinates,
               fieldId: fieldId
             });
+          } else {
+            setFormData(prev => ({
+              ...prev,
+              propertyAddress: propertyAddressWithCoordinates,
+              fieldId: fieldId
+            }));
           }
         } catch (error) {
           console.error("Error loading field details:", error);
+          
+          // Still update the property address with center coordinate if available
+          if (fieldCoordinates && fieldCoordinates.length > 0) {
+            // Calculate center coordinate
+            let centerLat = 0;
+            let centerLng = 0;
+            
+            fieldCoordinates.forEach(coord => {
+              centerLat += coord.lat;
+              centerLng += coord.lng;
+            });
+            
+            centerLat /= fieldCoordinates.length;
+            centerLng /= fieldCoordinates.length;
+            
+            // Format the center coordinate
+            const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
+            const propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+            
+            setFormData(prev => ({
+              ...prev,
+              propertyAddress: propertyAddressWithCoordinates,
+              fieldId: fieldId
+            }));
+          }
         } finally {
           setIsLoading(false);
         }
       } else {
+        // For new fields, still include center coordinate if available
+        if (fieldCoordinates && fieldCoordinates.length > 0) {
+          // Calculate center coordinate
+          let centerLat = 0;
+          let centerLng = 0;
+          
+          fieldCoordinates.forEach(coord => {
+            centerLat += coord.lat;
+            centerLng += coord.lng;
+          });
+          
+          centerLat /= fieldCoordinates.length;
+          centerLng /= fieldCoordinates.length;
+          
+          // Format the center coordinate
+          const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
+          const propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+          
+          setFormData(prev => ({
+            ...prev,
+            propertyAddress: propertyAddressWithCoordinates
+          }));
+        }
         setIsLoading(false);
       }
     };
 
     loadFieldDetails();
-  }, [fieldId, isOpen, fieldName]);
+  }, [fieldId, isOpen, fieldName, fieldCoordinates]);
 
   // Close the modal when clicking outside
   useEffect(() => {
@@ -329,6 +408,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     />
                   </div>
                 </div>
+                
               </div>
 
               {/* Contact Information */}
@@ -427,20 +507,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     />
                   </div>
 
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Address (Polygon Location)
-                    </label>
-                    <textarea
-                      name="propertyAddress"
-                      value={formData.propertyAddress}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Property address"
-                      rows={2}
-                      required
-                    />
-                  </div>
+                 
 
                   <div className="mt-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
@@ -459,13 +526,14 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                 </div>
 
                 {/* Property Measurements Section */}
+                
                 <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h3 className="text-md font-medium text-gray-900 mb-3">Property Measurements</h3>
+                  <h3 className="text-md font-medium text-gray-900 mb-3">Property Details</h3>
                   
                   {/* Property Group */}
                   <div className="mb-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Group
+                      Property Category
                     </label>
                     <select
                       name="propertyGroup"
@@ -478,11 +546,26 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       <option value="commercial">Commercial</option>
                       <option value="residential">Residential</option>
                       <option value="industrial">Industrial</option>
+                      <option value="govt">Govt</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property Address (Polygon Location)
+                    </label>
+                    <textarea
+                      name="propertyAddress"
+                      value={formData.propertyAddress}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Property address"
+                      rows={2}
+                      required
+                    />
                   </div>
                   
                   {/* Urban Property Details - Only visible for commercial, residential, industrial */}
-                  {formData.propertyGroup !== 'agriculture' && (
+                  {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
                     <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
                       <h4 className="text-sm font-medium text-gray-700 mb-2">Urban Property Details</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -559,33 +642,121 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     </div>
                   )}
                   
-                  {/* DLC Rate */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property DLC Rate
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        name="dlcRate"
-                        value={formData.dlcRate}
-                        onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-l-md"
-                        placeholder="Enter DLC rate"
-                      />
-                      <select
-                        name="dlcRateUnit"
-                        value={formData.dlcRateUnit}
-                        onChange={handleInputChange}
-                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                      >
-                        <option value="sqm">₹/m²</option>
-                        <option value="sqft">₹/ft²</option>
-                        <option value="sqyd">₹/yd²</option>
-                        <option value="ha">₹/ha</option>
-                      </select>
+                  {/* Government Property Type - Only visible when Govt is selected */}
+                  {formData.propertyGroup === 'govt' && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Government Property Type</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex items-center">
+                          <input
+                            id="govt-water"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="water"
+                            checked={formData.govtPropertyType === 'water'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-water" className="ml-2 block text-sm text-gray-700">
+                            Water
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-roads"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="roads"
+                            checked={formData.govtPropertyType === 'roads'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-roads" className="ml-2 block text-sm text-gray-700">
+                            Roads
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-electric"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="electric"
+                            checked={formData.govtPropertyType === 'electric'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-electric" className="ml-2 block text-sm text-gray-700">
+                            Electric
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-hospital"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="hospital"
+                            checked={formData.govtPropertyType === 'hospital'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-hospital" className="ml-2 block text-sm text-gray-700">
+                            Hospital
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-mining"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="mining"
+                            checked={formData.govtPropertyType === 'mining'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-mining" className="ml-2 block text-sm text-gray-700">
+                            Mining
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-forest"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="forest"
+                            checked={formData.govtPropertyType === 'forest'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-forest" className="ml-2 block text-sm text-gray-700">
+                            Forest
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            id="govt-department-office"
+                            type="radio"
+                            name="govtPropertyType"
+                            value="department_office"
+                            checked={formData.govtPropertyType === 'department_office'}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 border-gray-300"
+                          />
+                          <label htmlFor="govt-department-office" className="ml-2 block text-sm text-gray-700">
+                            Department Office
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  
+                  {/* DLC Rate */}
+                  
                   
                   {/* Road Front */}
                   <div className="mb-4">
@@ -640,6 +811,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       </select>
                     </div>
                   </div>
+
+                  
                   
                   {/* Property Facing */}
                   <div className="mb-4">
@@ -664,7 +837,34 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     </select>
                   </div>
                 </div>
+                <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Property DLC Rate
+                    </label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        name="dlcRate"
+                        value={formData.dlcRate}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-l-md"
+                        placeholder="Enter DLC rate"
+                      />
+                      <select
+                        name="dlcRateUnit"
+                        value={formData.dlcRateUnit}
+                        onChange={handleInputChange}
+                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                      >
+                        <option value="sqm">₹/m²</option>
+                        <option value="sqft">₹/ft²</option>
+                        <option value="sqyd">₹/yd²</option>
+                        <option value="ha">₹/ha</option>
+                      </select>
+                    </div>
+                  </div>
               </div>
+              
 
               {/* Aadhar Information */}
               <div>

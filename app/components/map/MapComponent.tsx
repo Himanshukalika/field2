@@ -6813,6 +6813,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ onAreaUpdate, onPolygonUpda
           onClose={() => setShowFieldDetailsForm(false)}
           fieldId={fieldPolygons[selectedPolygonIndex].get('fieldId') || null}
           fieldName={fieldPolygons[selectedPolygonIndex].get('fieldName') || 'Unnamed Field'}
+          fieldCoordinates={Array.from({ length: fieldPolygons[selectedPolygonIndex].getPath().getLength() }, 
+            (_, i) => {
+              const point = fieldPolygons[selectedPolygonIndex].getPath().getAt(i);
+              return { lat: point.lat(), lng: point.lng() };
+            }
+          )}
           onSave={async (formData: FieldFormData) => {
             try {
               await saveFieldOwnerDetails(formData);
