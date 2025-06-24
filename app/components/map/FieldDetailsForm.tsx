@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faUpload, faImage, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { getFieldOwnerDetails } from '../../lib/firebase';
 
 interface FieldDetailsFormProps {
@@ -12,6 +12,12 @@ interface FieldDetailsFormProps {
   fieldName: string;
   fieldCoordinates?: { lat: number; lng: number }[];
   onSave: (fieldData: FieldFormData) => Promise<void>;
+}
+
+interface Partner {
+  name: string;
+  fathersName: string;
+  share: string;
 }
 
 export interface FieldFormData {
@@ -24,6 +30,8 @@ export interface FieldFormData {
   pincode: string;
   propertyGroup: string;
   govtPropertyType: string;
+  ownershipType: string;
+  partners: Partner[];
   colonyName: string;
   plotNumber: string;
   blockNumber: string;
@@ -42,7 +50,7 @@ export interface FieldFormData {
   eastSideLength: string;
   westSideLength: string;
   sideLengthUnit: string;
-  propertyFacing: string;
+
   mobile: string;
   alternativeNumber: string;
   emailId: string;
@@ -72,6 +80,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     pincode: '',
     propertyGroup: 'agriculture',
     govtPropertyType: '',
+    ownershipType: 'individual',
+    partners: [{ name: '', fathersName: '', share: '' }],
     colonyName: '',
     plotNumber: '',
     blockNumber: '',
@@ -90,7 +100,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     eastSideLength: '',
     westSideLength: '',
     sideLengthUnit: 'm',
-    propertyFacing: '',
     mobile: '',
     alternativeNumber: '',
     emailId: '',
@@ -262,6 +271,30 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     }
   };
 
+  const handlePartnerChange = (index: number, field: keyof Partner, value: string) => {
+    const updatedPartners = [...formData.partners];
+    updatedPartners[index] = {
+      ...updatedPartners[index],
+      [field]: value
+    };
+    setFormData(prev => ({ ...prev, partners: updatedPartners }));
+  };
+
+  const addPartner = () => {
+    setFormData(prev => ({
+      ...prev,
+      partners: [...prev.partners, { name: '', fathersName: '', share: '' }]
+    }));
+  };
+
+  const removePartner = (index: number) => {
+    if (formData.partners.length > 1) {
+      const updatedPartners = [...formData.partners];
+      updatedPartners.splice(index, 1);
+      setFormData(prev => ({ ...prev, partners: updatedPartners }));
+    }
+  };
+
   const handleFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     field: 'ownerPhoto' | 'aadharFrontPhoto' | 'aadharBackPhoto' | 'landRecordPhoto'
@@ -378,35 +411,136 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
 
                 {/* Basic Info */}
                 <div>
+                  {/* Ownership Type */}
                   <div className="mb-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Name
+                      Ownership Type
                     </label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
+                    <select
+                      name="ownershipType"
+                      value={formData.ownershipType}
                       onChange={handleInputChange}
                       className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Owner's name"
                       required
-                    />
+                    >
+                      <option value="individual">Individual</option>
+                      <option value="partnership">Partnership</option>
+                      <option value="organization">Organization/Company</option>
+                    </select>
                   </div>
-                  
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Father's Name
-                    </label>
-                    <input
-                      type="text"
-                      name="fathersName"
-                      value={formData.fathersName}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Father's name"
-                      required
-                    />
-                  </div>
+
+                  {/* Partnership Details - Only visible when Partnership is selected */}
+                  {formData.ownershipType === 'partnership' && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Partnership Details</h4>
+                      
+                      {formData.partners.map((partner, index) => (
+                        <div key={index} className="mb-3 pb-3 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium">Partner {index + 1}</span>
+                            {formData.partners.length > 1 && (
+                              <button 
+                                type="button" 
+                                onClick={() => removePartner(index)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <FontAwesomeIcon icon={faTrash} />
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-1 gap-2">
+                            <div>
+                              <label className="block mb-1 text-xs font-medium text-gray-700">
+                                Partner Name
+                              </label>
+                              <input
+                                type="text"
+                                value={partner.name}
+                                onChange={(e) => handlePartnerChange(index, 'name', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded-md"
+                                placeholder="Partner's name"
+                                required={formData.ownershipType === 'partnership'}
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block mb-1 text-xs font-medium text-gray-700">
+                                Father's Name
+                              </label>
+                              <input
+                                type="text"
+                                value={partner.fathersName}
+                                onChange={(e) => handlePartnerChange(index, 'fathersName', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded-md"
+                                placeholder="Father's name"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block mb-1 text-xs font-medium text-gray-700">
+                                Share Percentage
+                              </label>
+                              <input
+                                type="text"
+                                value={partner.share}
+                                onChange={(e) => handlePartnerChange(index, 'share', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded-md"
+                                placeholder="e.g. 50%"
+                                required={formData.ownershipType === 'partnership'}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <button
+                        type="button"
+                        onClick={addPartner}
+                        className="mt-2 flex items-center text-blue-600 text-sm hover:text-blue-800"
+                      >
+                        <FontAwesomeIcon icon={faPlus} className="mr-1" />
+                        Add Partner
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Only show name and father's name for individual and organization */}
+                  {formData.ownershipType !== 'partnership' && (
+                    <>
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          {formData.ownershipType === 'organization' ? 'Organization Name' : 'Name'}
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          placeholder={formData.ownershipType === 'organization' ? "Organization's name" : "Owner's name"}
+                          required
+                        />
+                      </div>
+                      
+                      {formData.ownershipType === 'individual' && (
+                        <div className="mb-4">
+                          <label className="block mb-1 text-sm font-medium text-gray-700">
+                            Father's Name
+                          </label>
+                          <input
+                            type="text"
+                            name="fathersName"
+                            value={formData.fathersName}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Father's name"
+                            required
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
                 
               </div>
@@ -814,28 +948,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
 
                   
                   
-                  {/* Property Facing */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Plot Property Facing
-                    </label>
-                    <select
-                      name="propertyFacing"
-                      value={formData.propertyFacing}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="">Select facing direction</option>
-                      <option value="north">North</option>
-                      <option value="south">South</option>
-                      <option value="east">East</option>
-                      <option value="west">West</option>
-                      <option value="north_east">North-East</option>
-                      <option value="north_west">North-West</option>
-                      <option value="south_east">South-East</option>
-                      <option value="south_west">South-West</option>
-                    </select>
-                  </div>
+
                 </div>
                 <div className="mb-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
