@@ -379,6 +379,139 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
           /* Form */
           <form onSubmit={handleSubmit} className="p-3 sm:p-4 md:p-6">
             <div className="grid grid-cols-1 gap-4 md:gap-6">
+              {/* Property Category - Show for all ownership types */}
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Property Category</h3>
+                <div className="mb-4">
+                  <select
+                    name="propertyGroup"
+                    value={formData.propertyGroup}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    required
+                  >
+                    <option value="agriculture">Agriculture</option>
+                    <option value="commercial">Commercial</option>
+                    <option value="residential">Residential</option>
+                    <option value="industrial">Industrial</option>
+                    <option value="govt">Govt</option>
+                  </select>
+                </div>
+                
+                {/* Government Property Type - Only visible when Govt is selected */}
+                {formData.propertyGroup === 'govt' && (
+                  <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Government Property Type</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="flex items-center">
+                        <input
+                          id="govt-water"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="water"
+                          checked={formData.govtPropertyType === 'water'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-water" className="ml-2 block text-sm text-gray-700">
+                          Water
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-roads"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="roads"
+                          checked={formData.govtPropertyType === 'roads'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-roads" className="ml-2 block text-sm text-gray-700">
+                          Roads
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-electric"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="electric"
+                          checked={formData.govtPropertyType === 'electric'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-electric" className="ml-2 block text-sm text-gray-700">
+                          Electric
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-hospital"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="hospital"
+                          checked={formData.govtPropertyType === 'hospital'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-hospital" className="ml-2 block text-sm text-gray-700">
+                          Hospital
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-mining"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="mining"
+                          checked={formData.govtPropertyType === 'mining'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-mining" className="ml-2 block text-sm text-gray-700">
+                          Mining
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-forest"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="forest"
+                          checked={formData.govtPropertyType === 'forest'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-forest" className="ml-2 block text-sm text-gray-700">
+                          Forest
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-department-office"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="department_office"
+                          checked={formData.govtPropertyType === 'department_office'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-department-office" className="ml-2 block text-sm text-gray-700">
+                          Department Office
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 {/* Owner Photo */}
                 <div className="flex flex-col items-center">
@@ -779,25 +912,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     />
                   </div>
                   
-                  {/* Property Group */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Category
-                    </label>
-                    <select
-                      name="propertyGroup"
-                      value={formData.propertyGroup}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="agriculture">Agriculture</option>
-                      <option value="commercial">Commercial</option>
-                      <option value="residential">Residential</option>
-                      <option value="industrial">Industrial</option>
-                      <option value="govt">Govt</option>
-                    </select>
-                  </div>
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">
                       Property Address (Polygon Location)
@@ -906,119 +1020,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         </div>
                         
 
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Government Property Type - Only visible when Govt is selected */}
-                  {formData.propertyGroup === 'govt' && (
-                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Government Property Type</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="flex items-center">
-                          <input
-                            id="govt-water"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="water"
-                            checked={formData.govtPropertyType === 'water'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-water" className="ml-2 block text-sm text-gray-700">
-                            Water
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-roads"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="roads"
-                            checked={formData.govtPropertyType === 'roads'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-roads" className="ml-2 block text-sm text-gray-700">
-                            Roads
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-electric"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="electric"
-                            checked={formData.govtPropertyType === 'electric'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-electric" className="ml-2 block text-sm text-gray-700">
-                            Electric
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-hospital"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="hospital"
-                            checked={formData.govtPropertyType === 'hospital'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-hospital" className="ml-2 block text-sm text-gray-700">
-                            Hospital
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-mining"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="mining"
-                            checked={formData.govtPropertyType === 'mining'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-mining" className="ml-2 block text-sm text-gray-700">
-                            Mining
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-forest"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="forest"
-                            checked={formData.govtPropertyType === 'forest'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-forest" className="ml-2 block text-sm text-gray-700">
-                            Forest
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            id="govt-department-office"
-                            type="radio"
-                            name="govtPropertyType"
-                            value="department_office"
-                            checked={formData.govtPropertyType === 'department_office'}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 border-gray-300"
-                          />
-                          <label htmlFor="govt-department-office" className="ml-2 block text-sm text-gray-700">
-                            Department Office
-                          </label>
-                        </div>
                       </div>
                     </div>
                   )}
