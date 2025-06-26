@@ -327,11 +327,37 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     setIsSubmitting(true);
     
     try {
-      await onSave(formData);
+      // Optimize data before saving - remove unnecessary fields for govt properties
+      const optimizedData = { ...formData };
+      if (formData.propertyGroup === 'govt') {
+        // Clear out personal data fields to reduce data size for govt properties
+        optimizedData.ownerPhoto = null;
+        optimizedData.aadharFrontPhoto = null;
+        optimizedData.aadharBackPhoto = null;
+        optimizedData.landRecordPhoto = null;
+      }
+      
+      // Check if we have images to upload
+      const hasImages = 
+        (optimizedData.ownerPhoto && optimizedData.ownerPhoto.startsWith('data:image')) ||
+        (optimizedData.aadharFrontPhoto && optimizedData.aadharFrontPhoto.startsWith('data:image')) ||
+        (optimizedData.aadharBackPhoto && optimizedData.aadharBackPhoto.startsWith('data:image')) ||
+        (optimizedData.landRecordPhoto && optimizedData.landRecordPhoto.startsWith('data:image'));
+      
+      // Show loading message
+      if (hasImages) {
+        // This will be shown while images are uploading
+        alert("Images are being uploaded to server. Please wait...");
+      }
+      
+      // Save the optimized data (images will be uploaded to Firebase Storage)
+      await onSave(optimizedData);
       setSaveSuccess(true);
+      
+      // Close after success message
       setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 1500);
     } catch (error) {
       console.error("Error saving field details:", error);
       alert("Failed to save field details. Please try again.");
@@ -513,46 +539,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                {/* Owner Photo */}
-                <div className="flex flex-col items-center">
-                  <label className="block mb-2 text-sm font-medium text-gray-700 self-start">
-                    Owner Photo
-                  </label>
-                  <div className="w-32 h-32 sm:w-40 sm:h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center mb-2 overflow-hidden relative">
-                    {formData.ownerPhoto ? (
-                      <img 
-                        src={formData.ownerPhoto} 
-                        alt="Owner" 
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FontAwesomeIcon icon={faImage} className="text-gray-400 text-3xl sm:text-4xl" />
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => document.getElementById('ownerPhoto')?.click()}
-                    className="text-sm text-blue-600 hover:underline flex items-center"
-                  >
-                    <FontAwesomeIcon icon={faUpload} className="mr-1" />
-                    Upload Photo
-                  </button>
-                  <input
-                    id="ownerPhoto"
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
-                    className="hidden"
-                  />
-                </div>
-
                 {/* Basic Info */}
+                {formData.propertyGroup !== 'govt' && (
                 <div>
                   {/* Ownership Type */}
                   <div className="mb-4">
@@ -746,7 +734,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                           onChange={handleInputChange}
                           className="w-full p-2 border border-gray-300 rounded-md"
                           placeholder={formData.ownershipType === 'organization' ? "Organization's name" : "Owner's name"}
-                          required
+                          required={formData.propertyGroup !== 'govt'}
                         />
                       </div>
                       
@@ -762,7 +750,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                             onChange={handleInputChange}
                             className="w-full p-2 border border-gray-300 rounded-md"
                             placeholder="Father's name"
-                            required
+                            required={formData.propertyGroup !== 'govt'}
                           />
                         </div>
                       )}
@@ -779,18 +767,18 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                             onChange={handleInputChange}
                             className="w-full p-2 border border-gray-300 rounded-md"
                             placeholder="Authority name"
-                            required
+                            required={formData.propertyGroup !== 'govt'}
                           />
                         </div>
                       )}
                     </>
                   )}
                 </div>
-                
+                )}
               </div>
 
               {/* Contact Information - Only show for individual and organization */}
-              {formData.ownershipType !== 'partnership' && (
+              {formData.ownershipType !== 'partnership' && formData.propertyGroup !== 'govt' && (
                 <div>
                   <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Contact Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -805,7 +793,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         onChange={handleInputChange}
                         className="w-full p-2 border border-gray-300 rounded-md"
                         placeholder="Mobile number"
-                        required
+                        required={formData.propertyGroup !== 'govt'}
                       />
                     </div>
 
@@ -855,7 +843,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               )}
 
               {/* Address Information - Only show for individual and organization */}
-              {formData.ownershipType !== 'partnership' && (
+              {formData.ownershipType !== 'partnership' && formData.propertyGroup !== 'govt' && (
                 <div>
                   <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Address Information</h3>
                   <div className="space-y-4">
@@ -870,7 +858,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         className="w-full p-2 border border-gray-300 rounded-md"
                         placeholder="Permanent address"
                         rows={2}
-                        required
+                        required={formData.propertyGroup !== 'govt'}
                       />
                     </div>
 
@@ -1024,97 +1012,191 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     </div>
                   )}
                   
-                  {/* DLC Rate */}
-                  
-                  
-                  {/* Road Front */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Road Front
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        name="roadFront"
-                        value={formData.roadFront}
-                        onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-l-md"
-                        placeholder="Enter road front"
-                      />
-                      <select
-                        name="roadFrontUnit"
-                        value={formData.roadFrontUnit}
-                        onChange={handleInputChange}
-                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                      >
-                        <option value="running_foot">ft</option>
-                        <option value="running_meter">m</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  {/* Property Area */}
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Area
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        name="propertyArea"
-                        value={formData.propertyArea}
-                        onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-l-md"
-                        placeholder="Enter property area"
-                      />
-                      <select
-                        name="propertyAreaUnit"
-                        value={formData.propertyAreaUnit}
-                        onChange={handleInputChange}
-                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                      >
-                        <option value="square_foot">ft²</option>
-                        <option value="square_meter">m²</option>
-                        <option value="square_yard">yd²</option>
-                        <option value="square_km">km²</option>
-                      </select>
-                    </div>
-                  </div>
+                  {/* Property measurement fields - Not visible for govt properties */}
+                  {formData.propertyGroup !== 'govt' && (
+                    <>
+                      {/* Road Front */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Road Front
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="roadFront"
+                            value={formData.roadFront}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter road front"
+                          />
+                          <select
+                            name="roadFrontUnit"
+                            value={formData.roadFrontUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="running_foot">ft</option>
+                            <option value="running_meter">m</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Property Area */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Property Area
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="propertyArea"
+                            value={formData.propertyArea}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter property area"
+                          />
+                          <select
+                            name="propertyAreaUnit"
+                            value={formData.propertyAreaUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="square_foot">ft²</option>
+                            <option value="square_meter">m²</option>
+                            <option value="square_yard">yd²</option>
+                            <option value="square_km">km²</option>
+                          </select>
+                        </div>
+                      </div>
 
-                  
-                  
+                      {/* Property DLC Rate */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Property DLC Rate
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="dlcRate"
+                            value={formData.dlcRate}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter DLC rate"
+                          />
+                          <select
+                            name="dlcRateUnit"
+                            value={formData.dlcRateUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="sqm">₹/m²</option>
+                            <option value="sqft">₹/ft²</option>
+                            <option value="sqyd">₹/yd²</option>
+                            <option value="ha">₹/ha</option>
+                          </select>
+                        </div>
+                      </div>
 
+                      {/* Side-wise Length Measurements */}
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Side-wise Length Measurements</h4>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* North Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              North Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="northSideLength"
+                                value={formData.northSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="North side length"
+                              />
+                              <select
+                                name="sideLengthUnit"
+                                value={formData.sideLengthUnit}
+                                onChange={handleInputChange}
+                                className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                              >
+                                <option value="m">m</option>
+                                <option value="ft">ft</option>
+                              </select>
+                            </div>
+                          </div>
+                          
+                          {/* South Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              South Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="southSideLength"
+                                value={formData.southSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="South side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* East Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              East Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="eastSideLength"
+                                value={formData.eastSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="East side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* West Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              West Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="westSideLength"
+                                value={formData.westSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="West side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property DLC Rate
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        name="dlcRate"
-                        value={formData.dlcRate}
-                        onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-l-md"
-                        placeholder="Enter DLC rate"
-                      />
-                      <select
-                        name="dlcRateUnit"
-                        value={formData.dlcRateUnit}
-                        onChange={handleInputChange}
-                        className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                      >
-                        <option value="sqm">₹/m²</option>
-                        <option value="sqft">₹/ft²</option>
-                        <option value="sqyd">₹/yd²</option>
-                        <option value="ha">₹/ha</option>
-                      </select>
-                    </div>
-                  </div>
               </div>
-              
+            </div>
 
-              {/* Aadhar Information */}
+            {/* Aadhar Information */}
+            {formData.propertyGroup !== 'govt' && (
               <div>
                 <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Aadhar Information</h3>
                 <div className="mb-4">
@@ -1129,7 +1211,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     className="w-full p-2 border border-gray-300 rounded-md"
                     placeholder="XXXX-XXXX-XXXX"
                     maxLength={14}
-                    required
+                    required={formData.propertyGroup !== 'govt'}
                   />
                 </div>
 
@@ -1190,8 +1272,51 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Document Type and Upload */}
+            {/* Owner Photo - Moved below Aadhar Information */}
+            {formData.propertyGroup !== 'govt' && (
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Owner Photo</h3>
+                <div className="flex flex-col items-center">
+                  <div className="w-32 h-32 sm:w-40 sm:h-40 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center mb-2 overflow-hidden relative">
+                    {formData.ownerPhoto ? (
+                      <img 
+                        src={formData.ownerPhoto} 
+                        alt="Owner" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FontAwesomeIcon icon={faImage} className="text-gray-400 text-3xl sm:text-4xl" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => document.getElementById('ownerPhoto')?.click()}
+                    className="text-sm text-blue-600 hover:underline flex items-center"
+                  >
+                    <FontAwesomeIcon icon={faUpload} className="mr-1" />
+                    Upload Photo
+                  </button>
+                  <input
+                    id="ownerPhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, 'ownerPhoto')}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Document Type and Upload */}
+            {formData.propertyGroup !== 'govt' && (
               <div>
                 <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Land Records</h3>
                 {/* Document Type Selection */}
@@ -1204,7 +1329,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     value={formData.documentType}
                     onChange={handleInputChange}
                     className="w-full p-2 border border-gray-300 rounded-md mb-4"
-                    required
+                    required={formData.propertyGroup !== 'govt'}
                   >
                     <option value="govt.zammbandi">Govt. Zammbandi</option>
                     <option value="panchayat_pata">Panchayat Pata</option>
@@ -1240,7 +1365,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   />
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Submit Button */}
             <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row justify-end gap-2">

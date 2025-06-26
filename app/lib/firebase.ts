@@ -17,7 +17,7 @@ import {
   DocumentData,
   updateDoc
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Field } from '../components/map/types';
 import { FieldFormData } from '../components/map/FieldDetailsForm';
 
@@ -574,6 +574,59 @@ const deleteDistanceMeasurementFromLocalStorage = (measurementId: string): boole
   }
 };
 
+// Helper function to upload an image to Firebase Storage
+export const uploadImageToStorage = async (
+  imageDataUrl: string, 
+  path: string
+): Promise<string> => {
+  try {
+    if (!imageDataUrl || !imageDataUrl.startsWith('data:image')) {
+      throw new Error('Invalid image data');
+    }
+
+    // Get the content type from the data URL
+    const contentType = imageDataUrl.split(';')[0].split(':')[1];
+    
+    // Create a storage reference
+    const storageRef = ref(storage, path);
+    
+    // Upload the image with metadata
+    await uploadString(storageRef, imageDataUrl, 'data_url', {
+      contentType: contentType
+    });
+    
+    // Get the download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    
+    return downloadURL;
+  } catch (error) {
+    console.error('Error uploading image to Firebase Storage:', error);
+    throw error;
+  }
+};
+
+// Helper function to delete an image from Firebase Storage
+export const deleteImageFromStorage = async (imageUrl: string): Promise<void> => {
+  try {
+    // Extract the path from the URL
+    // Firebase Storage URLs contain a token, so we need to extract just the path
+    const baseUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/`;
+    if (!imageUrl.startsWith(baseUrl)) {
+      return; // Not a Firebase Storage URL
+    }
+    
+    const pathWithParams = imageUrl.substring(baseUrl.length);
+    const path = decodeURIComponent(pathWithParams.split('?')[0]);
+    
+    // Delete the file
+    const storageRef = ref(storage, path);
+    await deleteObject(storageRef);
+  } catch (error) {
+    console.error('Error deleting image from Firebase Storage:', error);
+    // Don't throw here, just log the error
+  }
+};
+
 // Field owner details functions
 export const saveFieldOwnerDetails = async (fieldData: FieldFormData): Promise<void> => {
   try {
@@ -583,39 +636,120 @@ export const saveFieldOwnerDetails = async (fieldData: FieldFormData): Promise<v
 
     const userId = auth.currentUser.uid;
 
-    // Check if we're updating an existing record or creating a new one
-    if (fieldData.fieldId) {
-      // First check if document exists for this field
-      const existingRecordsQuery = query(
-        collection(db, 'fieldOwnerDetails'), 
-        where('userId', '==', userId),
-        where('fieldId', '==', fieldData.fieldId)
-      );
-      
-      const existingRecords = await getDocs(existingRecordsQuery);
-      
-      if (!existingRecords.empty) {
-        // Update existing record
-        const docId = existingRecords.docs[0].id;
-        await updateDoc(doc(db, 'fieldOwnerDetails', docId), {
-          ...fieldData,
-          userId,
-          updatedAt: new Date().toISOString()
-        });
-      } else {
-        // Create new record
-        await addDoc(collection(db, 'fieldOwnerDetails'), {
-          ...fieldData,
-          userId,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-      }
-    } else {
+    // Check if we have a fieldId
+    if (!fieldData.fieldId) {
       throw new Error('Field ID is required');
+    }
+    
+    // Create a document ID based on userId and fieldId for consistent reference
+    const docId = `${userId}_${fieldData.fieldId}`;
+    const docRef = doc(db, 'fieldOwnerDetails', docId);
+    
+    // Check if document exists with a single read operation
+    const docSnap = await getDoc(docRef);
+    const existingData = docSnap.exists() ? docSnap.data() as FieldFormData : null;
+    
+    // Process and upload images if they exist and are in base64 format
+    const processedData = { ...fieldData };
+    
+    try {
+      // Upload owner photo if it's a new base64 image
+      if (processedData.ownerPhoto && processedData.ownerPhoto.startsWith('data:image')) {
+        try {
+          // Delete old image if it exists and is different
+          if (existingData?.ownerPhoto && existingData.ownerPhoto.includes('firebasestorage.googleapis.com')) {
+            await deleteImageFromStorage(existingData.ownerPhoto).catch(err => console.warn('Failed to delete old owner photo:', err));
+          }
+          
+          // Upload new image
+          const imagePath = `fieldOwnerDetails/${userId}/${fieldData.fieldId}/ownerPhoto`;
+          processedData.ownerPhoto = await uploadImageToStorage(processedData.ownerPhoto, imagePath);
+        } catch (uploadError) {
+          console.error('Failed to upload owner photo:', uploadError);
+          // Keep the original base64 data if upload fails
+        }
+      }
+      
+      // Upload Aadhar front photo
+      if (processedData.aadharFrontPhoto && processedData.aadharFrontPhoto.startsWith('data:image')) {
+        try {
+          // Delete old image if it exists and is different
+          if (existingData?.aadharFrontPhoto && existingData.aadharFrontPhoto.includes('firebasestorage.googleapis.com')) {
+            await deleteImageFromStorage(existingData.aadharFrontPhoto).catch(err => console.warn('Failed to delete old Aadhar front photo:', err));
+          }
+          
+          // Upload new image
+          const imagePath = `fieldOwnerDetails/${userId}/${fieldData.fieldId}/aadharFront`;
+          processedData.aadharFrontPhoto = await uploadImageToStorage(processedData.aadharFrontPhoto, imagePath);
+        } catch (uploadError) {
+          console.error('Failed to upload Aadhar front photo:', uploadError);
+          // Keep the original base64 data if upload fails
+        }
+      }
+      
+      // Upload Aadhar back photo
+      if (processedData.aadharBackPhoto && processedData.aadharBackPhoto.startsWith('data:image')) {
+        try {
+          // Delete old image if it exists and is different
+          if (existingData?.aadharBackPhoto && existingData.aadharBackPhoto.includes('firebasestorage.googleapis.com')) {
+            await deleteImageFromStorage(existingData.aadharBackPhoto).catch(err => console.warn('Failed to delete old Aadhar back photo:', err));
+          }
+          
+          // Upload new image
+          const imagePath = `fieldOwnerDetails/${userId}/${fieldData.fieldId}/aadharBack`;
+          processedData.aadharBackPhoto = await uploadImageToStorage(processedData.aadharBackPhoto, imagePath);
+        } catch (uploadError) {
+          console.error('Failed to upload Aadhar back photo:', uploadError);
+          // Keep the original base64 data if upload fails
+        }
+      }
+      
+      // Upload land record photo
+      if (processedData.landRecordPhoto && processedData.landRecordPhoto.startsWith('data:image')) {
+        try {
+          // Delete old image if it exists and is different
+          if (existingData?.landRecordPhoto && existingData.landRecordPhoto.includes('firebasestorage.googleapis.com')) {
+            await deleteImageFromStorage(existingData.landRecordPhoto).catch(err => console.warn('Failed to delete old land record photo:', err));
+          }
+          
+          // Upload new image
+          const imagePath = `fieldOwnerDetails/${userId}/${fieldData.fieldId}/landRecord`;
+          processedData.landRecordPhoto = await uploadImageToStorage(processedData.landRecordPhoto, imagePath);
+        } catch (uploadError) {
+          console.error('Failed to upload land record photo:', uploadError);
+          // Keep the original base64 data if upload fails
+        }
+      }
+    } catch (imageError) {
+      console.error('Error processing images:', imageError);
+      // Continue with saving the data even if image processing fails
+    }
+    
+    // Use serverTimestamp for better consistency
+    const now = serverTimestamp();
+    
+    if (docSnap.exists()) {
+      // Update existing record - only update what's changed
+      await updateDoc(docRef, {
+        ...processedData,
+        userId,
+        updatedAt: now
+      });
+    } else {
+      // Create new record with consistent ID
+      await setDoc(docRef, {
+        ...processedData,
+        userId,
+        createdAt: now,
+        updatedAt: now
+      });
     }
   } catch (error) {
     console.error('Error saving field owner details:', error);
+    // Add more specific error handling
+    if (isPermissionError(error)) {
+      console.warn('Permission error when saving field details. Check Firestore rules.');
+    }
     throw error;
   }
 };
@@ -628,22 +762,24 @@ export const getFieldOwnerDetails = async (fieldId: string): Promise<FieldFormDa
 
     const userId = auth.currentUser.uid;
     
-    const fieldDetailsQuery = query(
-      collection(db, 'fieldOwnerDetails'),
-      where('userId', '==', userId),
-      where('fieldId', '==', fieldId)
-    );
+    // Use direct document reference instead of query for better performance
+    const docId = `${userId}_${fieldId}`;
+    const docRef = doc(db, 'fieldOwnerDetails', docId);
     
-    const querySnapshot = await getDocs(fieldDetailsQuery);
+    // Get document with a single read operation
+    const docSnap = await getDoc(docRef);
     
-    if (querySnapshot.empty) {
+    if (!docSnap.exists()) {
       return null;
     }
     
-    const data = querySnapshot.docs[0].data() as FieldFormData;
-    return data;
+    return docSnap.data() as FieldFormData;
   } catch (error) {
     console.error('Error getting field owner details:', error);
+    // Add more specific error handling
+    if (isPermissionError(error)) {
+      console.warn('Permission error when getting field details. Check Firestore rules.');
+    }
     throw error;
   }
 };
