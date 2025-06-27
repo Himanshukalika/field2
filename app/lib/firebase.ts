@@ -720,6 +720,23 @@ export const saveFieldOwnerDetails = async (fieldData: FieldFormData): Promise<v
           // Keep the original base64 data if upload fails
         }
       }
+      
+      // Upload bhunaksha photo
+      if (processedData.bhunakshaPhoto && processedData.bhunakshaPhoto.startsWith('data:image')) {
+        try {
+          // Delete old image if it exists and is different
+          if (existingData?.bhunakshaPhoto && existingData.bhunakshaPhoto.includes('firebasestorage.googleapis.com')) {
+            await deleteImageFromStorage(existingData.bhunakshaPhoto).catch(err => console.warn('Failed to delete old bhunaksha photo:', err));
+          }
+          
+          // Upload new image
+          const imagePath = `fieldOwnerDetails/${userId}/${fieldData.fieldId}/bhunaksha`;
+          processedData.bhunakshaPhoto = await uploadImageToStorage(processedData.bhunakshaPhoto, imagePath);
+        } catch (uploadError) {
+          console.error('Failed to upload bhunaksha photo:', uploadError);
+          // Keep the original base64 data if upload fails
+        }
+      }
     } catch (imageError) {
       console.error('Error processing images:', imageError);
       // Continue with saving the data even if image processing fails

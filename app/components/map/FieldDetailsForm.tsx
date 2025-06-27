@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
 import { getFieldOwnerDetails } from '../../lib/firebase';
 
 interface FieldDetailsFormProps {
@@ -68,6 +68,7 @@ export interface FieldFormData {
   aadharFrontPhoto: string | null;
   aadharBackPhoto: string | null;
   landRecordPhoto: string | null;
+  bhunakshaPhoto: string | null;
   fieldId: string | null;
 }
 
@@ -85,7 +86,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     fathersName: '',
     permanentAddress: '',
     temporaryAddress: '',
-    propertyAddress: fieldName || '',
+    propertyAddress: '',
     pincode: '',
     propertyGroup: 'agriculture',
     govtPropertyType: '',
@@ -121,6 +122,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     aadharFrontPhoto: null,
     aadharBackPhoto: null,
     landRecordPhoto: null,
+    bhunakshaPhoto: null,
     fieldId: fieldId
   });
 
@@ -226,7 +228,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     };
 
     loadFieldDetails();
-  }, [fieldId, isOpen, fieldName, fieldCoordinates]);
+  }, [fieldId, isOpen, fieldCoordinates]);
 
   // Close the modal when clicking outside
   useEffect(() => {
@@ -307,7 +309,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
 
   const handleFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    field: 'ownerPhoto' | 'aadharFrontPhoto' | 'aadharBackPhoto' | 'landRecordPhoto'
+    field: 'ownerPhoto' | 'aadharFrontPhoto' | 'aadharBackPhoto' | 'landRecordPhoto' | 'bhunakshaPhoto'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -342,7 +344,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
         (optimizedData.ownerPhoto && optimizedData.ownerPhoto.startsWith('data:image')) ||
         (optimizedData.aadharFrontPhoto && optimizedData.aadharFrontPhoto.startsWith('data:image')) ||
         (optimizedData.aadharBackPhoto && optimizedData.aadharBackPhoto.startsWith('data:image')) ||
-        (optimizedData.landRecordPhoto && optimizedData.landRecordPhoto.startsWith('data:image'));
+        (optimizedData.landRecordPhoto && optimizedData.landRecordPhoto.startsWith('data:image')) ||
+        (optimizedData.bhunakshaPhoto && optimizedData.bhunakshaPhoto.startsWith('data:image'));
       
       // Show loading message
       if (hasImages) {
@@ -366,7 +369,9 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] overflow-y-auto p-0 sm:p-2 md:p-6">
@@ -546,54 +551,48 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   <h3 className="text-md font-medium text-gray-900 mb-3">Property Details</h3>
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Digital Address
+                      Coordinates
                     </label>
-                    <textarea
-                      name="propertyAddress"
-                      value={formData.propertyAddress}
-                      onChange={handleInputChange}
-                      className="w-full h-12 p-2 border border-gray-300 rounded-md"
-                      placeholder="Property address"
-                      rows={2}
-                      required
-                    />
+                    <div className="flex">
+                      <textarea
+                        name="propertyAddress"
+                        value={formData.propertyAddress}
+                        readOnly
+                        className="w-full h-12 p-2 border border-gray-300 rounded-l-md bg-gray-50 cursor-not-allowed"
+                        placeholder="Property coordinates"
+                        rows={2}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Extract coordinates from the format (lat, lng)
+                          const coordsMatch = formData.propertyAddress.match(/\(([^,]+),\s*([^)]+)\)/);
+                          if (coordsMatch && coordsMatch.length === 3) {
+                            const lat = coordsMatch[1];
+                            const lng = coordsMatch[2];
+                            // Open Google Maps in a new tab
+                            window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                          } else {
+                            alert('Invalid coordinates format. Cannot open in Google Maps.');
+                          }
+                        }}
+                        className="flex items-center justify-center px-4 bg-blue-600 text-white rounded-r-md hover:bg-blue-700"
+                        title="Open in Google Maps"
+                      >
+                        <FontAwesomeIcon icon={faMapMarkerAlt} />
+                        <span className="ml-2 hidden sm:inline">Navigate</span>
+                      </button>
+                    </div>
                   </div>
 
                   
                   
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Pincode
-                    </label>
-                    <input
-                      type="text"
-                      name="pincode"
-                      value={formData.pincode}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Enter pincode"
-                      maxLength={6}
-                    />
-                  </div>
                   
                 
                   
                   {/* Special/Corner Plot - Available for all property types */}
-                  <div className="mb-4 mt-4">
-                    <div className="flex items-center">
-                      <input
-                        id="corner-plot"
-                        type="checkbox"
-                        name="isCornerPlot"
-                        checked={formData.isCornerPlot}
-                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                      />
-                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
-                        This is a Special/Corner Plot
-                      </label>
-                    </div>
-                  </div>
+          
                   
                   {/* Urban Property Details - Only visible for commercial, residential, industrial */}
                   {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
@@ -890,6 +889,37 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       </div>
                     </>
                   )}
+
+<div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter pincode"
+                      maxLength={6}
+                    />
+                  </div>
+                  <div className="mb-4 mt-4">
+                    <div className="flex items-center">
+                      <input
+                        id="corner-plot"
+                        type="checkbox"
+                        name="isCornerPlot"
+                        checked={formData.isCornerPlot}
+                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                      />
+                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
+                        This is a Special/Corner Plot
+                      </label>
+                    </div>
+                  </div>
+                  
                 </div>
               </div>
             </div>
@@ -1402,6 +1432,38 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     type="file"
                     accept="image/*"
                     onChange={(e) => handleFileUpload(e, 'landRecordPhoto')}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Bhunaksha Image Section */}
+            {formData.propertyGroup !== 'govt' && (
+              <div className="mt-6">
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Bhunaksha Image</h3>
+                <div className="mb-2">
+                  <p className="text-sm text-gray-600">
+                    Upload a clear image of the Bhunaksha (land map) for this property. This helps in verifying property boundaries.
+                  </p>
+                </div>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 h-40 flex flex-col items-center justify-center relative">
+                  {formData.bhunakshaPhoto ? (
+                    <img 
+                      src={formData.bhunakshaPhoto} 
+                      alt="Bhunaksha Image" 
+                      className="max-h-36 max-w-full object-contain"
+                    />
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faUpload} className="text-gray-400 text-xl mb-2" />
+                      <p className="text-sm text-gray-500">Click to upload Bhunaksha image</p>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, 'bhunakshaPhoto')}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                 </div>
