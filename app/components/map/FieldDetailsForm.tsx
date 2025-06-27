@@ -538,7 +538,325 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                 )}
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+       
+
+              {/* Property Measurements Section */}
+              <div>
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h3 className="text-md font-medium text-gray-900 mb-3">Property Details</h3>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Digital Address
+                    </label>
+                    <textarea
+                      name="propertyAddress"
+                      value={formData.propertyAddress}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Property address"
+                      rows={2}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter pincode"
+                      maxLength={6}
+                    />
+                  </div>
+                  
+                
+                  
+                  {/* Special/Corner Plot - Available for all property types */}
+                  <div className="mb-4 mt-4">
+                    <div className="flex items-center">
+                      <input
+                        id="corner-plot"
+                        type="checkbox"
+                        name="isCornerPlot"
+                        checked={formData.isCornerPlot}
+                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                      />
+                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
+                        This is a Special/Corner Plot
+                      </label>
+                    </div>
+                  </div>
+                  
+                  {/* Urban Property Details - Only visible for commercial, residential, industrial */}
+                  {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Urban Property Details</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Colony Name
+                          </label>
+                          <input
+                            type="text"
+                            name="colonyName"
+                            value={formData.colonyName}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter colony name"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Plot Number
+                          </label>
+                          <input
+                            type="text"
+                            name="plotNumber"
+                            value={formData.plotNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter plot number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Block Number
+                          </label>
+                          <input
+                            type="text"
+                            name="blockNumber"
+                            value={formData.blockNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter block number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Road Number
+                          </label>
+                          <input
+                            type="text"
+                            name="roadNumber"
+                            value={formData.roadNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter road number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Gali Number
+                          </label>
+                          <input
+                            type="text"
+                            name="galiNumber"
+                            value={formData.galiNumber}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter gali number"
+                          />
+                        </div>
+                        
+
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Property measurement fields - Not visible for govt properties */}
+                  {formData.propertyGroup !== 'govt' && (
+                    <>
+                      {/* Road Front */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Road Front
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="roadFront"
+                            value={formData.roadFront}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter road front"
+                          />
+                          <select
+                            name="roadFrontUnit"
+                            value={formData.roadFrontUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="running_foot">ft</option>
+                            <option value="running_meter">m</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Property Area */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Property Area
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="propertyArea"
+                            value={formData.propertyArea}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter property area"
+                          />
+                          <select
+                            name="propertyAreaUnit"
+                            value={formData.propertyAreaUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="square_foot">ft²</option>
+                            <option value="square_meter">m²</option>
+                            <option value="square_yard">yd²</option>
+                            <option value="square_km">km²</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Property DLC Rate */}
+                      <div className="mb-4">
+                        <label className="block mb-1 text-sm font-medium text-gray-700">
+                          Property DLC Rate
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="number"
+                            name="dlcRate"
+                            value={formData.dlcRate}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-l-md"
+                            placeholder="Enter DLC rate"
+                          />
+                          <select
+                            name="dlcRateUnit"
+                            value={formData.dlcRateUnit}
+                            onChange={handleInputChange}
+                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                          >
+                            <option value="sqm">₹/m²</option>
+                            <option value="sqft">₹/ft²</option>
+                            <option value="sqyd">₹/yd²</option>
+                            <option value="ha">₹/ha</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Side-wise Length Measurements */}
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Side-wise Length Measurements</h4>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* North Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              North Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="northSideLength"
+                                value={formData.northSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="North side length"
+                              />
+                              <select
+                                name="sideLengthUnit"
+                                value={formData.sideLengthUnit}
+                                onChange={handleInputChange}
+                                className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
+                              >
+                                <option value="m">m</option>
+                                <option value="ft">ft</option>
+                              </select>
+                            </div>
+                          </div>
+                          
+                          {/* South Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              South Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="southSideLength"
+                                value={formData.southSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="South side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* East Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              East Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="eastSideLength"
+                                value={formData.eastSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="East side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* West Side */}
+                          <div>
+                            <label className="block mb-1 text-xs font-medium text-gray-700">
+                              West Side Length
+                            </label>
+                            <div className="flex">
+                              <input
+                                type="number"
+                                name="westSideLength"
+                                value={formData.westSideLength}
+                                onChange={handleInputChange}
+                                className="w-full p-2 border border-gray-300 rounded-l-md"
+                                placeholder="West side length"
+                              />
+                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
+                                {formData.sideLengthUnit}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 {/* Basic Info */}
                 {formData.propertyGroup !== 'govt' && (
                 <div>
@@ -879,321 +1197,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* Property Measurements Section */}
-              <div>
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h3 className="text-md font-medium text-gray-900 mb-3">Property Details</h3>
-                  
-                  <div className="mb-4">
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Pincode
-                    </label>
-                    <input
-                      type="text"
-                      name="pincode"
-                      value={formData.pincode}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Enter pincode"
-                      maxLength={6}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Property Address (Polygon Location)
-                    </label>
-                    <textarea
-                      name="propertyAddress"
-                      value={formData.propertyAddress}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Property address"
-                      rows={2}
-                      required
-                    />
-                  </div>
-                  
-                  {/* Special/Corner Plot - Available for all property types */}
-                  <div className="mb-4 mt-4">
-                    <div className="flex items-center">
-                      <input
-                        id="corner-plot"
-                        type="checkbox"
-                        name="isCornerPlot"
-                        checked={formData.isCornerPlot}
-                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                      />
-                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
-                        This is a Special/Corner Plot
-                      </label>
-                    </div>
-                  </div>
-                  
-                  {/* Urban Property Details - Only visible for commercial, residential, industrial */}
-                  {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
-                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Urban Property Details</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block mb-1 text-xs font-medium text-gray-700">
-                            Colony Name
-                          </label>
-                          <input
-                            type="text"
-                            name="colonyName"
-                            value={formData.colonyName}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            placeholder="Enter colony name"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block mb-1 text-xs font-medium text-gray-700">
-                            Plot Number
-                          </label>
-                          <input
-                            type="text"
-                            name="plotNumber"
-                            value={formData.plotNumber}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            placeholder="Enter plot number"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block mb-1 text-xs font-medium text-gray-700">
-                            Block Number
-                          </label>
-                          <input
-                            type="text"
-                            name="blockNumber"
-                            value={formData.blockNumber}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            placeholder="Enter block number"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block mb-1 text-xs font-medium text-gray-700">
-                            Road Number
-                          </label>
-                          <input
-                            type="text"
-                            name="roadNumber"
-                            value={formData.roadNumber}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            placeholder="Enter road number"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block mb-1 text-xs font-medium text-gray-700">
-                            Gali Number
-                          </label>
-                          <input
-                            type="text"
-                            name="galiNumber"
-                            value={formData.galiNumber}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                            placeholder="Enter gali number"
-                          />
-                        </div>
-                        
-
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Property measurement fields - Not visible for govt properties */}
-                  {formData.propertyGroup !== 'govt' && (
-                    <>
-                      {/* Road Front */}
-                      <div className="mb-4">
-                        <label className="block mb-1 text-sm font-medium text-gray-700">
-                          Road Front
-                        </label>
-                        <div className="flex">
-                          <input
-                            type="number"
-                            name="roadFront"
-                            value={formData.roadFront}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-l-md"
-                            placeholder="Enter road front"
-                          />
-                          <select
-                            name="roadFrontUnit"
-                            value={formData.roadFrontUnit}
-                            onChange={handleInputChange}
-                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                          >
-                            <option value="running_foot">ft</option>
-                            <option value="running_meter">m</option>
-                          </select>
-                        </div>
-                      </div>
-                      
-                      {/* Property Area */}
-                      <div className="mb-4">
-                        <label className="block mb-1 text-sm font-medium text-gray-700">
-                          Property Area
-                        </label>
-                        <div className="flex">
-                          <input
-                            type="number"
-                            name="propertyArea"
-                            value={formData.propertyArea}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-l-md"
-                            placeholder="Enter property area"
-                          />
-                          <select
-                            name="propertyAreaUnit"
-                            value={formData.propertyAreaUnit}
-                            onChange={handleInputChange}
-                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                          >
-                            <option value="square_foot">ft²</option>
-                            <option value="square_meter">m²</option>
-                            <option value="square_yard">yd²</option>
-                            <option value="square_km">km²</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Property DLC Rate */}
-                      <div className="mb-4">
-                        <label className="block mb-1 text-sm font-medium text-gray-700">
-                          Property DLC Rate
-                        </label>
-                        <div className="flex">
-                          <input
-                            type="number"
-                            name="dlcRate"
-                            value={formData.dlcRate}
-                            onChange={handleInputChange}
-                            className="w-full p-2 border border-gray-300 rounded-l-md"
-                            placeholder="Enter DLC rate"
-                          />
-                          <select
-                            name="dlcRateUnit"
-                            value={formData.dlcRateUnit}
-                            onChange={handleInputChange}
-                            className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                          >
-                            <option value="sqm">₹/m²</option>
-                            <option value="sqft">₹/ft²</option>
-                            <option value="sqyd">₹/yd²</option>
-                            <option value="ha">₹/ha</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Side-wise Length Measurements */}
-                      <div className="mb-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">Side-wise Length Measurements</h4>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {/* North Side */}
-                          <div>
-                            <label className="block mb-1 text-xs font-medium text-gray-700">
-                              North Side Length
-                            </label>
-                            <div className="flex">
-                              <input
-                                type="number"
-                                name="northSideLength"
-                                value={formData.northSideLength}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-l-md"
-                                placeholder="North side length"
-                              />
-                              <select
-                                name="sideLengthUnit"
-                                value={formData.sideLengthUnit}
-                                onChange={handleInputChange}
-                                className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600"
-                              >
-                                <option value="m">m</option>
-                                <option value="ft">ft</option>
-                              </select>
-                            </div>
-                          </div>
-                          
-                          {/* South Side */}
-                          <div>
-                            <label className="block mb-1 text-xs font-medium text-gray-700">
-                              South Side Length
-                            </label>
-                            <div className="flex">
-                              <input
-                                type="number"
-                                name="southSideLength"
-                                value={formData.southSideLength}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-l-md"
-                                placeholder="South side length"
-                              />
-                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
-                                {formData.sideLengthUnit}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* East Side */}
-                          <div>
-                            <label className="block mb-1 text-xs font-medium text-gray-700">
-                              East Side Length
-                            </label>
-                            <div className="flex">
-                              <input
-                                type="number"
-                                name="eastSideLength"
-                                value={formData.eastSideLength}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-l-md"
-                                placeholder="East side length"
-                              />
-                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
-                                {formData.sideLengthUnit}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* West Side */}
-                          <div>
-                            <label className="block mb-1 text-xs font-medium text-gray-700">
-                              West Side Length
-                            </label>
-                            <div className="flex">
-                              <input
-                                type="number"
-                                name="westSideLength"
-                                value={formData.westSideLength}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-l-md"
-                                placeholder="West side length"
-                              />
-                              <span className="bg-gray-100 border border-gray-300 border-l-0 rounded-r-md flex items-center px-3 text-gray-600">
-                                {formData.sideLengthUnit}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
 
             {/* Aadhar Information */}
             {formData.propertyGroup !== 'govt' && (
