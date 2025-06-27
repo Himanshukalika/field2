@@ -58,7 +58,8 @@ export interface FieldFormData {
   eastSideLength: string;
   westSideLength: string;
   sideLengthUnit: string;
-
+  khataNo: string;
+  khasraNo: string;
   mobile: string;
   alternativeNumber: string;
   emailId: string;
@@ -110,6 +111,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     eastSideLength: '',
     westSideLength: '',
     sideLengthUnit: 'm',
+    khataNo: '',
+    khasraNo: '',
     mobile: '',
     alternativeNumber: '',
     emailId: '',
@@ -135,7 +138,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
           const details = await getFieldOwnerDetails(fieldId);
           
           // Format center coordinate for display if available
-          let propertyAddressWithCoordinates = fieldName || '';
+          let propertyAddressWithCoordinates = '';
           if (fieldCoordinates && fieldCoordinates.length > 0) {
             // Calculate center coordinate
             let centerLat = 0;
@@ -149,9 +152,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
             centerLat /= fieldCoordinates.length;
             centerLng /= fieldCoordinates.length;
             
-            // Format the center coordinate
-            const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
-            propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+            // Format the center coordinate - only show coordinates
+            propertyAddressWithCoordinates = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
           }
           
           if (details) {
@@ -184,9 +186,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
             centerLat /= fieldCoordinates.length;
             centerLng /= fieldCoordinates.length;
             
-            // Format the center coordinate
-            const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
-            const propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+            // Format the center coordinate - only show coordinates
+            const propertyAddressWithCoordinates = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
             
             setFormData(prev => ({
               ...prev,
@@ -212,9 +213,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
           centerLat /= fieldCoordinates.length;
           centerLng /= fieldCoordinates.length;
           
-          // Format the center coordinate
-          const coordText = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
-          const propertyAddressWithCoordinates = `${fieldName || ''}\nCenter Coordinate: ${coordText}`;
+          // Format the center coordinate - only show coordinates
+          const propertyAddressWithCoordinates = `(${centerLat.toFixed(6)}, ${centerLng.toFixed(6)})`;
           
           setFormData(prev => ({
             ...prev,
@@ -552,12 +552,14 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       name="propertyAddress"
                       value={formData.propertyAddress}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className="w-full h-12 p-2 border border-gray-300 rounded-md"
                       placeholder="Property address"
                       rows={2}
                       required
                     />
                   </div>
+
+                  
                   
                   <div className="mb-4">
                     <label className="block mb-1 text-sm font-medium text-gray-700">
@@ -669,6 +671,42 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         </div>
                         
 
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Agriculture Property Details - Only visible when Agriculture is selected */}
+                  {formData.propertyGroup === 'agriculture' && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Agriculture Property Details</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Khata No
+                          </label>
+                          <input
+                            type="text"
+                            name="khataNo"
+                            value={formData.khataNo}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter Khata Number"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block mb-1 text-xs font-medium text-gray-700">
+                            Khasra No
+                          </label>
+                          <input
+                            type="text"
+                            name="khasraNo"
+                            value={formData.khasraNo}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Enter Khasra Number"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
