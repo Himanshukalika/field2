@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash, faMapMarkerAlt, faPrint, faArrowLeft, faEdit, faSave } from '@fortawesome/free-solid-svg-icons';
 import { getFieldOwnerDetails } from '../../lib/firebase';
 
 interface FieldDetailsFormProps {
@@ -50,6 +50,7 @@ export interface FieldFormData {
   dlcRateUnit: string;
   roadFront: string;
   roadFrontUnit: string;
+  roadType: string;
   propertyArea: string;
   propertyAreaUnit: string;
   propertySideLength: string;
@@ -104,6 +105,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     dlcRateUnit: 'sqm',
     roadFront: '',
     roadFrontUnit: 'running_foot',
+    roadType: 'main_road',
     propertyArea: '',
     propertyAreaUnit: 'square_meter',
     propertySideLength: '',
@@ -129,6 +131,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [printView, setPrintView] = useState(false);
+  const [editMode, setEditMode] = useState(true);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Load existing field details when the form is opened
@@ -164,12 +168,18 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               propertyAddress: details.propertyAddress || propertyAddressWithCoordinates,
               fieldId: fieldId
             });
+            
+            // If this is an existing record, set to view mode by default
+            setEditMode(false);
           } else {
             setFormData(prev => ({
               ...prev,
               propertyAddress: propertyAddressWithCoordinates,
               fieldId: fieldId
             }));
+            
+            // For new records, keep edit mode
+            setEditMode(true);
           }
         } catch (error) {
           console.error("Error loading field details:", error);
@@ -224,6 +234,9 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
           }));
         }
         setIsLoading(false);
+        
+        // Always start in edit mode for new records
+        setEditMode(true);
       }
     };
 
@@ -324,6 +337,10 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -357,14 +374,11 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
       await onSave(optimizedData);
       setSaveSuccess(true);
       
-      // Close after success message
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      // Switch to print view instead of closing
+      setPrintView(true);
     } catch (error) {
       console.error("Error saving field details:", error);
       alert("Failed to save field details. Please try again.");
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -373,6 +387,464 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     return null;
   }
 
+  // Render print view if form was successfully submitted or in view mode for existing records
+  if (printView || (!isLoading && !editMode)) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] overflow-y-auto p-0 sm:p-2 md:p-6">
+        <div 
+          ref={modalRef}
+          className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative my-2 mx-auto"
+        >
+          {/* Print-specific styles */}
+          <style type="text/css" media="print">
+            {`
+              @page { size: auto; margin: 15mm; }
+              body { background-color: white; }
+              img { max-width: 100%; page-break-inside: avoid; }
+              .print-image { max-height: 200px; object-fit: contain; }
+              .print-section { page-break-inside: avoid; }
+              .no-break { page-break-inside: avoid; }
+            `}
+          </style>
+          
+          {/* Header */}
+          <div className="bg-blue-600 p-3 sm:p-4 text-white flex justify-between items-center sticky top-0 z-10">
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold truncate">Property Details - {fieldName}</h2>
+            <div className="flex items-center">
+              {!printView && (
+                <button 
+                  onClick={() => setEditMode(true)}
+                  className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0 mr-2"
+                  title="Edit Details"
+                >
+                  <FontAwesomeIcon icon={faEdit} />
+                </button>
+              )}
+              <button 
+                onClick={handlePrint}
+                className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0 mr-2"
+                title="Print Details"
+              >
+                <FontAwesomeIcon icon={faPrint} />
+              </button>
+              <button 
+                onClick={() => {
+                  setPrintView(false);
+                  onClose();
+                }}
+                className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6">
+            {/* Print view content */}
+            <div className="print:text-black">
+              <div className="text-center mb-6 print:mb-4">
+                <h1 className="text-xl font-bold">{fieldName} - Property Details</h1>
+                <p className="text-gray-500">{formData.propertyAddress}</p>
+              </div>
+
+              {/* Property Category */}
+              <div className="mb-6 print:mb-4">
+                <h2 className="text-lg font-semibold border-b pb-1 mb-2">Property Category</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <span className="font-medium">Category:</span>{' '}
+                    {formData.propertyGroup === 'agriculture' ? 'Agriculture' : 
+                     formData.propertyGroup === 'commercial' ? 'Commercial' :
+                     formData.propertyGroup === 'residential' ? 'Residential' :
+                     formData.propertyGroup === 'industrial' ? 'Industrial' : 'Government'}
+                  </div>
+                  {formData.propertyGroup === 'govt' && (
+                    <div>
+                      <span className="font-medium">Govt Property Type:</span>{' '}
+                      {formData.govtPropertyType === 'water' ? 'Water' :
+                       formData.govtPropertyType === 'roads' ? 'Roads' :
+                       formData.govtPropertyType === 'electric' ? 'Electric' :
+                       formData.govtPropertyType === 'hospital' ? 'Hospital' :
+                       formData.govtPropertyType === 'mining' ? 'Mining' :
+                       formData.govtPropertyType === 'forest' ? 'Forest' :
+                       formData.govtPropertyType === 'department_office' ? 'Department Office' : ''}
+                    </div>
+                  )}
+                  {formData.isCornerPlot && (
+                    <div>
+                      <span className="font-medium">Special/Corner Plot:</span> Yes
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Owner Information */}
+              {formData.propertyGroup !== 'govt' && (
+                <div className="mb-6 print:mb-4 print-section">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Owner Information</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Owner Photo */}
+                    {formData.ownerPhoto && (
+                      <div className="col-span-1 sm:col-span-2 flex flex-col items-center mb-3 no-break">
+                        <span className="font-medium mb-2">Owner Photo</span>
+                        <img 
+                          src={formData.ownerPhoto} 
+                          alt="Owner" 
+                          className="h-40 object-contain border border-gray-300 rounded-md print-image"
+                        />
+                      </div>
+                    )}
+                    
+                    <div>
+                      <span className="font-medium">Ownership Type:</span>{' '}
+                      {formData.ownershipType === 'individual' ? 'Individual' : 
+                       formData.ownershipType === 'partnership' ? 'Partnership' : 'Organization/Company'}
+                    </div>
+                    
+                    {formData.ownershipType !== 'partnership' && (
+                      <>
+                        <div>
+                          <span className="font-medium">{formData.ownershipType === 'organization' ? 'Organization Name' : 'Name'}:</span>{' '}
+                          {formData.name}
+                        </div>
+                        {formData.ownershipType === 'individual' && (
+                          <div>
+                            <span className="font-medium">Father's Name:</span>{' '}
+                            {formData.fathersName}
+                          </div>
+                        )}
+                        {formData.ownershipType === 'organization' && (
+                          <div>
+                            <span className="font-medium">Authority Name:</span>{' '}
+                            {formData.authorityName}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Partnership details if applicable */}
+                  {formData.ownershipType === 'partnership' && (
+                    <div className="mt-2">
+                      <h3 className="font-medium">Partners:</h3>
+                      {formData.partners.map((partner, index) => (
+                        <div key={index} className="ml-4 mt-2 pb-2 border-b border-gray-100 last:border-b-0">
+                          <div><span className="font-medium">Name:</span> {partner.name}</div>
+                          {partner.fathersName && <div><span className="font-medium">Father's Name:</span> {partner.fathersName}</div>}
+                          <div><span className="font-medium">Share:</span> {partner.share}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Contact Information */}
+              {formData.propertyGroup !== 'govt' && formData.ownershipType !== 'partnership' && (
+                <div className="mb-6 print:mb-4">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Contact Information</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {formData.mobile && (
+                      <div>
+                        <span className="font-medium">Mobile:</span> {formData.mobile}
+                      </div>
+                    )}
+                    {formData.alternativeNumber && (
+                      <div>
+                        <span className="font-medium">Alternative Number:</span> {formData.alternativeNumber}
+                      </div>
+                    )}
+                    {formData.whatsappNumber && (
+                      <div>
+                        <span className="font-medium">WhatsApp:</span> {formData.whatsappNumber}
+                      </div>
+                    )}
+                    {formData.emailId && (
+                      <div>
+                        <span className="font-medium">Email:</span> {formData.emailId}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Address Information */}
+              {formData.propertyGroup !== 'govt' && formData.ownershipType !== 'partnership' && (
+                <div className="mb-6 print:mb-4">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Address Information</h2>
+                  {formData.permanentAddress && (
+                    <div className="mb-2">
+                      <span className="font-medium">Permanent Address:</span> {formData.permanentAddress}
+                    </div>
+                  )}
+                  {formData.temporaryAddress && (
+                    <div>
+                      <span className="font-medium">Temporary Address:</span> {formData.temporaryAddress}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Property Details */}
+              <div className="mb-6 print:mb-4">
+                <h2 className="text-lg font-semibold border-b pb-1 mb-2">Property Details</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <span className="font-medium">Coordinates:</span> {formData.propertyAddress}
+                  </div>
+                  {formData.pincode && (
+                    <div>
+                      <span className="font-medium">Pincode:</span> {formData.pincode}
+                    </div>
+                  )}
+
+                  {/* Urban Property Details */}
+                  {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
+                    <>
+                      {formData.colonyName && (
+                        <div>
+                          <span className="font-medium">Colony Name:</span> {formData.colonyName}
+                        </div>
+                      )}
+                      {formData.plotNumber && (
+                        <div>
+                          <span className="font-medium">Plot Number:</span> {formData.plotNumber}
+                        </div>
+                      )}
+                      {formData.blockNumber && (
+                        <div>
+                          <span className="font-medium">Block Number:</span> {formData.blockNumber}
+                        </div>
+                      )}
+                      {formData.roadNumber && (
+                        <div>
+                          <span className="font-medium">Road Number:</span> {formData.roadNumber}
+                        </div>
+                      )}
+                      {formData.galiNumber && (
+                        <div>
+                          <span className="font-medium">Gali Number:</span> {formData.galiNumber}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Agriculture Property Details */}
+                  {formData.propertyGroup === 'agriculture' && (
+                    <>
+                      {formData.khataNo && (
+                        <div>
+                          <span className="font-medium">Khata No:</span> {formData.khataNo}
+                        </div>
+                      )}
+                      {formData.khasraNo && (
+                        <div>
+                          <span className="font-medium">Khasra No:</span> {formData.khasraNo}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Property Measurements */}
+              {formData.propertyGroup !== 'govt' && (
+                <div className="mb-6 print:mb-4">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Property Measurements</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {formData.roadFront && (
+                      <div>
+                        <span className="font-medium">Road Front:</span> {formData.roadFront} 
+                        {formData.roadFrontUnit === 'running_foot' ? ' ft' : ' m'}
+                        {formData.roadType && (
+                          <span> ({formData.roadType.replace(/_/g, ' ')})</span>
+                        )}
+                      </div>
+                    )}
+                    {formData.propertyArea && (
+                      <div>
+                        <span className="font-medium">Property Area:</span> {formData.propertyArea} 
+                        {formData.propertyAreaUnit === 'square_foot' ? ' ft²' : 
+                         formData.propertyAreaUnit === 'square_meter' ? ' m²' :
+                         formData.propertyAreaUnit === 'square_yard' ? ' yd²' : ' km²'}
+                      </div>
+                    )}
+                    {formData.dlcRate && (
+                      <div>
+                        <span className="font-medium">DLC Rate:</span> ₹{formData.dlcRate}/
+                        {formData.dlcRateUnit === 'sqm' ? 'm²' : 
+                         formData.dlcRateUnit === 'sqft' ? 'ft²' :
+                         formData.dlcRateUnit === 'sqyd' ? 'yd²' : 'ha'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Side Measurements */}
+                  {(formData.northSideLength || formData.southSideLength || formData.eastSideLength || formData.westSideLength) && (
+                    <div className="mt-3">
+                      <h3 className="font-medium">Side Measurements:</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-4">
+                        {formData.northSideLength && (
+                          <div>
+                            <span className="font-medium">North:</span> {formData.northSideLength} {formData.sideLengthUnit}
+                          </div>
+                        )}
+                        {formData.southSideLength && (
+                          <div>
+                            <span className="font-medium">South:</span> {formData.southSideLength} {formData.sideLengthUnit}
+                          </div>
+                        )}
+                        {formData.eastSideLength && (
+                          <div>
+                            <span className="font-medium">East:</span> {formData.eastSideLength} {formData.sideLengthUnit}
+                          </div>
+                        )}
+                        {formData.westSideLength && (
+                          <div>
+                            <span className="font-medium">West:</span> {formData.westSideLength} {formData.sideLengthUnit}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Document Information */}
+              {formData.propertyGroup !== 'govt' && (
+                <div className="mb-6 print:mb-4">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Document Information</h2>
+                  <div>
+                    <span className="font-medium">Document Type:</span>{' '}
+                    {formData.documentType === 'govt.zammbandi' ? 'Govt. Zammbandi' :
+                     formData.documentType === 'panchayat_pata' ? 'Panchayat Pata' :
+                     formData.documentType === 'nagarpalika_pata' ? 'Nagarpalika Pata' :
+                     formData.documentType === 'development_authority' ? 'Development Authority (JDA/BDA/KDA)' :
+                     formData.documentType === 'govt_approved_society' ? 'Government Approved Society' :
+                     formData.documentType === 'riico' ? 'RIICO' :
+                     'Government Land Category Convert Document'}
+                  </div>
+                  {formData.aadharNumber && (
+                    <div className="mt-2">
+                      <span className="font-medium">Aadhar Number:</span> {formData.aadharNumber}
+                    </div>
+                  )}
+                  
+                  {/* Document Images */}
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Aadhar Front */}
+                    {formData.aadharFrontPhoto && (
+                      <div className="flex flex-col items-center no-break">
+                        <span className="font-medium mb-1">Aadhar Card (Front)</span>
+                        <img 
+                          src={formData.aadharFrontPhoto} 
+                          alt="Aadhar Front" 
+                          className="max-h-40 object-contain border border-gray-300 rounded-md print-image"
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Aadhar Back */}
+                    {formData.aadharBackPhoto && (
+                      <div className="flex flex-col items-center no-break">
+                        <span className="font-medium mb-1">Aadhar Card (Back)</span>
+                        <img 
+                          src={formData.aadharBackPhoto} 
+                          alt="Aadhar Back" 
+                          className="max-h-40 object-contain border border-gray-300 rounded-md print-image"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Land Records */}
+              {formData.propertyGroup !== 'govt' && (formData.landRecordPhoto || formData.bhunakshaPhoto) && (
+                <div className="mb-6 print:mb-4 print-section">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Land Records</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Land Record Photo */}
+                    {formData.landRecordPhoto && (
+                      <div className="flex flex-col items-center no-break">
+                        <span className="font-medium mb-1">Land Record Document</span>
+                        <img 
+                          src={formData.landRecordPhoto} 
+                          alt="Land Record" 
+                          className="max-h-52 object-contain border border-gray-300 rounded-md print-image"
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Bhunaksha Photo */}
+                    {formData.bhunakshaPhoto && (
+                      <div className="flex flex-col items-center no-break">
+                        <span className="font-medium mb-1">Bhunaksha Image</span>
+                        <img 
+                          src={formData.bhunakshaPhoto} 
+                          alt="Bhunaksha" 
+                          className="max-h-52 object-contain border border-gray-300 rounded-md print-image"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Footer with date */}
+              <div className="mt-8 pt-4 border-t text-sm text-gray-500">
+                <p>Generated on: {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</p>
+              </div>
+            </div>
+            
+            {/* Buttons */}
+            <div className="mt-6 flex justify-end gap-3 print:hidden">
+              {!printView && (
+                <button
+                  type="button"
+                  onClick={() => setEditMode(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center gap-2 hover:bg-blue-700"
+                >
+                  <FontAwesomeIcon icon={faEdit} />
+                  Edit
+                </button>
+              )}
+              {printView && (
+                <button
+                  type="button"
+                  onClick={() => setPrintView(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md flex items-center gap-2"
+                >
+                  <FontAwesomeIcon icon={faArrowLeft} />
+                  Back to Form
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center gap-2 hover:bg-blue-700"
+              >
+                <FontAwesomeIcon icon={faPrint} />
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintView(false);
+                  onClose();
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render form view for editing
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] overflow-y-auto p-0 sm:p-2 md:p-6">
       <div 
@@ -382,12 +854,23 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
         {/* Header */}
         <div className="bg-blue-600 p-3 sm:p-4 text-white flex justify-between items-center sticky top-0 z-10">
           <h2 className="text-base sm:text-lg md:text-xl font-semibold truncate">{fieldName}</h2>
-          <button 
-            onClick={onClose}
-            className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0"
-          >
-            <FontAwesomeIcon icon={faTimes} />
-          </button>
+          <div className="flex items-center">
+            {!isLoading && fieldId && (
+              <button 
+                onClick={() => setEditMode(false)}
+                className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0 mr-2"
+                title="View Details"
+              >
+                <FontAwesomeIcon icon={faCheck} />
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="text-white hover:bg-blue-700 rounded-full p-2 flex-shrink-0"
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+          </div>
         </div>
 
         {/* Success message */}
@@ -676,7 +1159,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   
                   {/* Agriculture Property Details - Only visible when Agriculture is selected */}
                   {formData.propertyGroup === 'agriculture' && (
-                    <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                    <div className="mb-4 mt-4 p-3 bg-gray-50 rounded-md border border-gray-200">
                       <h4 className="text-sm font-medium text-gray-700 mb-2">Agriculture Property Details</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
@@ -718,6 +1201,26 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         <label className="block mb-1 text-sm font-medium text-gray-700">
                           Road Front
                         </label>
+                        <div className="mb-2">
+                          <select
+                            name="roadType"
+                            value={formData.roadType}
+                            onChange={handleInputChange}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                          >
+                            <option value="main_road">Main Road</option>
+                            <option value="highway">Highway / National Highway</option>
+                            <option value="colony_road">Colony Road</option>
+                            <option value="service_road">Service Road</option>
+                            <option value="sector_road">Sector Road</option>
+                            <option value="gali">Gali / Street</option>
+                            <option value="bypass">Bypass Road</option>
+                            <option value="ring_road">Ring Road</option>
+                            <option value="state_highway">State Highway</option>
+                            <option value="village_road">Village Road</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
                         <div className="flex">
                           <input
                             type="number"
@@ -1474,7 +1977,13 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
             <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row justify-end gap-2">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => {
+                  if (fieldId) {
+                    setEditMode(false); // Switch to view mode if it's an existing record
+                  } else {
+                    onClose(); // Just close if it's a new record
+                  }
+                }}
                 className="w-full sm:w-auto px-4 py-2 sm:px-6 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
                 disabled={isSubmitting}
               >
@@ -1482,9 +1991,10 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               </button>
               <button
                 type="submit"
-                className="w-full sm:w-auto px-4 py-2 sm:px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+                className="w-full sm:w-auto px-4 py-2 sm:px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2"
                 disabled={isSubmitting}
               >
+                <FontAwesomeIcon icon={faSave} />
                 {isSubmitting ? 'Saving...' : 'Save Details'}
               </button>
             </div>
