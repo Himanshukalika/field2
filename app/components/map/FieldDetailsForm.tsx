@@ -36,6 +36,7 @@ export interface FieldFormData {
   pincode: string;
   propertyGroup: string;
   govtPropertyType: string;
+  govtPropertySubType: string; // Add this new field
   ownershipType: string;
   authorityName: string;
   partners: Partner[];
@@ -91,6 +92,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     pincode: '',
     propertyGroup: 'agriculture',
     govtPropertyType: '',
+    govtPropertySubType: '', // Initialize the new field
     ownershipType: 'individual',
     authorityName: '',
     partners: [{ name: '', fathersName: '', share: '', mobile: '', alternativeNumber: '', emailId: '', whatsappNumber: '', permanentAddress: '', temporaryAddress: '' }],
@@ -459,16 +461,26 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                      formData.propertyGroup === 'industrial' ? 'Industrial' : 'Government'}
                   </div>
                   {formData.propertyGroup === 'govt' && (
-                    <div>
-                      <span className="font-medium">Govt Property Type:</span>{' '}
-                      {formData.govtPropertyType === 'water' ? 'Water' :
-                       formData.govtPropertyType === 'roads' ? 'Roads' :
-                       formData.govtPropertyType === 'electric' ? 'Electric' :
-                       formData.govtPropertyType === 'hospital' ? 'Hospital' :
-                       formData.govtPropertyType === 'mining' ? 'Mining' :
-                       formData.govtPropertyType === 'forest' ? 'Forest' :
-                       formData.govtPropertyType === 'department_office' ? 'Department Office' : ''}
-                    </div>
+                    <>
+                      <div>
+                        <span className="font-medium">Govt Property Type:</span>{' '}
+                        {formData.govtPropertyType === 'water' ? 'Water' :
+                         formData.govtPropertyType === 'roads' ? 'Roads' :
+                         formData.govtPropertyType === 'electric' ? 'Electric' :
+                         formData.govtPropertyType === 'hospital' ? 'Hospital' :
+                         formData.govtPropertyType === 'mining' ? 'Mining' :
+                         formData.govtPropertyType === 'forest' ? 'Forest' :
+                         formData.govtPropertyType === 'department_office' ? 'Department Office' : ''}
+                      </div>
+                      {formData.govtPropertySubType && (
+                        <div>
+                          <span className="font-medium">Subcategory:</span>{' '}
+                          {formData.govtPropertySubType.split('_').map(word => 
+                            word.charAt(0).toUpperCase() + word.slice(1)
+                          ).join(' ')}
+                        </div>
+                      )}
+                    </>
                   )}
                   {formData.isCornerPlot && (
                     <div>
@@ -646,6 +658,54 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Selected Polygon Area */}
+              {fieldCoordinates && fieldCoordinates.length > 2 && (
+                <div className="mb-6 print:mb-4">
+                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Selected Polygon Area</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(() => {
+                      // Calculate area using Google Maps geometry library
+                      try {
+                        // Create a path from the coordinates
+                        const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
+                        
+                        // Calculate area in square meters
+                        const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
+                        
+                        // Convert to different units
+                        const areaInHectares = areaInSqMeters / 10000;
+                        const areaInSqFeet = areaInSqMeters * 10.764;
+                        const areaInSqYards = areaInSqMeters * 1.196;
+                        
+                        return (
+                          <>
+                            <div>
+                              <span className="font-medium">Hectares:</span>{' '}
+                              <span>{areaInHectares.toFixed(4)} ha</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Square Meters:</span>{' '}
+                              <span>{areaInSqMeters.toFixed(2)} m²</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Square Feet:</span>{' '}
+                              <span>{areaInSqFeet.toFixed(2)} ft²</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Square Yards:</span>{' '}
+                              <span>{areaInSqYards.toFixed(2)} yd²</span>
+                            </div>
+                          </>
+                        );
+                      } catch (error) {
+                        console.error("Error calculating area:", error);
+                        return null;
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* Property Measurements */}
               {formData.propertyGroup !== 'govt' && (
@@ -1022,6 +1082,124 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                         </label>
                       </div>
                     </div>
+
+                    {/* Subcategory selection based on selected government property type */}
+                    {formData.govtPropertyType && (
+                      <div className="mt-4 border-t border-gray-200 pt-3">
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Subcategory</h5>
+                        <select
+                          name="govtPropertySubType"
+                          value={formData.govtPropertySubType}
+                          onChange={handleInputChange}
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Subcategory</option>
+                          
+                          {/* Water subcategories */}
+                          {formData.govtPropertyType === 'water' && (
+                            <>
+                              <option value="river">River</option>
+                              <option value="lake">Lake</option>
+                              <option value="pond">Pond</option>
+                              <option value="canal">Canal</option>
+                              <option value="dam">Dam</option>
+                              <option value="reservoir">Reservoir</option>
+                              <option value="watershed">Watershed</option>
+                              <option value="water_treatment">Water Treatment Plant</option>
+                            </>
+                          )}
+                          
+                          {/* Roads subcategories */}
+                          {formData.govtPropertyType === 'roads' && (
+                            <>
+                              <option value="national_highway">National Highway</option>
+                              <option value="state_highway">State Highway</option>
+                              <option value="district_road">District Road</option>
+                              <option value="village_road">Village Road</option>
+                              <option value="city_road">City Road</option>
+                              <option value="expressway">Expressway</option>
+                              <option value="bypass">Bypass</option>
+                              <option value="bridge">Bridge</option>
+                              <option value="flyover">Flyover</option>
+                            </>
+                          )}
+                          
+                          {/* Electric subcategories */}
+                          {formData.govtPropertyType === 'electric' && (
+                            <>
+                              <option value="power_plant">Power Plant</option>
+                              <option value="substation">Substation</option>
+                              <option value="transmission_line">Transmission Line</option>
+                              <option value="distribution_center">Distribution Center</option>
+                              <option value="solar_plant">Solar Plant</option>
+                              <option value="wind_farm">Wind Farm</option>
+                              <option value="hydro_power">Hydro Power Station</option>
+                              <option value="thermal_power">Thermal Power Station</option>
+                            </>
+                          )}
+                          
+                          {/* Hospital subcategories */}
+                          {formData.govtPropertyType === 'hospital' && (
+                            <>
+                              <option value="district_hospital">District Hospital</option>
+                              <option value="community_health_center">Community Health Center</option>
+                              <option value="primary_health_center">Primary Health Center</option>
+                              <option value="sub_center">Sub Center</option>
+                              <option value="medical_college">Medical College</option>
+                              <option value="specialty_hospital">Specialty Hospital</option>
+                              <option value="dispensary">Dispensary</option>
+                              <option value="ayush_center">AYUSH Center</option>
+                            </>
+                          )}
+                          
+                          {/* Mining subcategories */}
+                          {formData.govtPropertyType === 'mining' && (
+                            <>
+                              <option value="coal_mine">Coal Mine</option>
+                              <option value="stone_mine">Stone Mine</option>
+                              <option value="sand_mine">Sand Mine</option>
+                              <option value="mineral_mine">Mineral Mine</option>
+                              <option value="metal_mine">Metal Mine</option>
+                              <option value="clay_mine">Clay Mine</option>
+                              <option value="gravel_mine">Gravel Mine</option>
+                              <option value="quarry">Quarry</option>
+                            </>
+                          )}
+                          
+                          {/* Forest subcategories */}
+                          {formData.govtPropertyType === 'forest' && (
+                            <>
+                              <option value="reserved_forest">Reserved Forest</option>
+                              <option value="protected_forest">Protected Forest</option>
+                              <option value="village_forest">Village Forest</option>
+                              <option value="wildlife_sanctuary">Wildlife Sanctuary</option>
+                              <option value="national_park">National Park</option>
+                              <option value="biosphere_reserve">Biosphere Reserve</option>
+                              <option value="tiger_reserve">Tiger Reserve</option>
+                              <option value="community_forest">Community Forest</option>
+                            </>
+                          )}
+                          
+                          {/* Department Office subcategories */}
+                          {formData.govtPropertyType === 'department_office' && (
+                            <>
+                              <option value="collectorate">Collectorate</option>
+                              <option value="tehsil_office">Tehsil Office</option>
+                              <option value="panchayat_office">Panchayat Office</option>
+                              <option value="police_station">Police Station</option>
+                              <option value="court">Court</option>
+                              <option value="education_dept">Education Department</option>
+                              <option value="revenue_dept">Revenue Department</option>
+                              <option value="agriculture_dept">Agriculture Department</option>
+                              <option value="forest_dept">Forest Department</option>
+                              <option value="pwd">Public Works Department</option>
+                              <option value="health_dept">Health Department</option>
+                              <option value="irrigation_dept">Irrigation Department</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1426,6 +1604,72 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Selected Polygon Area Section */}
+            {fieldCoordinates && fieldCoordinates.length > 2 && (
+              <div>
+                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Selected Polygon Area</h3>
+                <div className="p-3 bg-blue-50 rounded-md border border-blue-200 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(() => {
+                      // Calculate area using Google Maps geometry library
+                      const calculateArea = () => {
+                        try {
+                          // Create a path from the coordinates
+                          const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
+                          
+                          // Calculate area in square meters
+                          const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
+                          
+                          // Convert to different units
+                          const areaInHectares = areaInSqMeters / 10000;
+                          const areaInSqFeet = areaInSqMeters * 10.764;
+                          const areaInSqYards = areaInSqMeters * 1.196;
+                          
+                          return {
+                            sqMeters: areaInSqMeters.toFixed(2),
+                            hectares: areaInHectares.toFixed(4),
+                            sqFeet: areaInSqFeet.toFixed(2),
+                            sqYards: areaInSqYards.toFixed(2)
+                          };
+                        } catch (error) {
+                          console.error("Error calculating area:", error);
+                          return {
+                            sqMeters: "0.00",
+                            hectares: "0.0000",
+                            sqFeet: "0.00",
+                            sqYards: "0.00"
+                          };
+                        }
+                      };
+                      
+                      const areas = calculateArea();
+                      
+                      return (
+                        <>
+                          <div>
+                            <span className="font-medium text-gray-700">Hectares:</span>
+                            <span className="ml-2 text-blue-700 font-semibold">{areas.hectares} ha</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Square Meters:</span>
+                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqMeters} m²</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Square Feet:</span>
+                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqFeet} ft²</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Square Yards:</span>
+                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqYards} yd²</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 {/* Basic Info */}

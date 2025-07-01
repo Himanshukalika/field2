@@ -1242,5 +1242,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     </div>
   </div>
 );
+   <
+   type="submit"
+   className="w-full sm:w-auto px-4 py-2 sm:px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400">
 
 export default FieldDetailsForm; 
