@@ -36,7 +36,7 @@ export interface FieldFormData {
   pincode: string;
   propertyGroup: string;
   govtPropertyType: string;
-  govtPropertySubType: string; // Add this new field
+  govtPropertySubType: string;
   ownershipType: string;
   authorityName: string;
   partners: Partner[];
@@ -46,6 +46,8 @@ export interface FieldFormData {
   roadNumber: string;
   galiNumber: string;
   isCornerPlot: boolean;
+  specialPlotType: string; // Add this new field
+  plotFacing: string;
   documentType: string;
   dlcRate: string;
   dlcRateUnit: string;
@@ -92,7 +94,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     pincode: '',
     propertyGroup: 'agriculture',
     govtPropertyType: '',
-    govtPropertySubType: '', // Initialize the new field
+    govtPropertySubType: '',
     ownershipType: 'individual',
     authorityName: '',
     partners: [{ name: '', fathersName: '', share: '', mobile: '', alternativeNumber: '', emailId: '', whatsappNumber: '', permanentAddress: '', temporaryAddress: '' }],
@@ -102,6 +104,8 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
     roadNumber: '',
     galiNumber: '',
     isCornerPlot: false,
+    specialPlotType: '', // Initialize the new field
+    plotFacing: '',
     documentType: 'govt.zammbandi',
     dlcRate: '',
     dlcRateUnit: 'sqm',
@@ -293,7 +297,54 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
         formatted += truncated[i];
       }
       setFormData(prev => ({ ...prev, [name]: formatted }));
-    } else {
+    } 
+    // Special handling for road type to set default road width
+    else if (name === 'roadType') {
+      let defaultRoadWidth = '';
+      
+      // Set default road width based on road type
+      switch(value) {
+        case 'main_road':
+          defaultRoadWidth = '60';
+          break;
+        case 'highway':
+          defaultRoadWidth = '100';
+          break;
+        case 'colony_road':
+          defaultRoadWidth = '30';
+          break;
+        case 'service_road':
+          defaultRoadWidth = '40';
+          break;
+        case 'sector_road':
+          defaultRoadWidth = '45';
+          break;
+        case 'gali':
+          defaultRoadWidth = '15';
+          break;
+        case 'bypass':
+          defaultRoadWidth = '80';
+          break;
+        case 'ring_road':
+          defaultRoadWidth = '80';
+          break;
+        case 'state_highway':
+          defaultRoadWidth = '80';
+          break;
+        case 'village_road':
+          defaultRoadWidth = '20';
+          break;
+        default:
+          defaultRoadWidth = '';
+      }
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        [name]: value,
+        roadFront: defaultRoadWidth || prev.roadFront
+      }));
+    }
+    else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
@@ -484,7 +535,28 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   )}
                   {formData.isCornerPlot && (
                     <div>
-                      <span className="font-medium">Special/Corner Plot:</span> Yes
+                      <span className="font-medium">Special Plot Type:</span>{' '}
+                      {formData.specialPlotType === 'corner' ? 'Corner Plot' :
+                       formData.specialPlotType === 'park_facing' ? 'Park Facing' :
+                       formData.specialPlotType === 'double_corner' ? 'Double Corner' :
+                       formData.specialPlotType === 'two_side_open' ? 'Two Side Open' :
+                       formData.specialPlotType === 'three_side_open' ? 'Three Side Open' :
+                       formData.specialPlotType === 'main_road_facing' ? 'Main Road Facing' :
+                       formData.specialPlotType === 'cul_de_sac' ? 'Cul-de-sac Plot' :
+                       formData.specialPlotType === 'other' ? 'Other' : 'Yes'}
+                    </div>
+                  )}
+                  {formData.plotFacing && (
+                    <div>
+                      <span className="font-medium">Plot Facing:</span>{' '}
+                      {formData.plotFacing === 'east' ? 'East' :
+                       formData.plotFacing === 'west' ? 'West' :
+                       formData.plotFacing === 'north' ? 'North' :
+                       formData.plotFacing === 'south' ? 'South' :
+                       formData.plotFacing === 'north_east' ? 'North-East' :
+                       formData.plotFacing === 'north_west' ? 'North-West' :
+                       formData.plotFacing === 'south_east' ? 'South-East' :
+                       formData.plotFacing === 'south_west' ? 'South-West' : ''}
                     </div>
                   )}
                 </div>
@@ -544,6 +616,12 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                           <div><span className="font-medium">Name:</span> {partner.name}</div>
                           {partner.fathersName && <div><span className="font-medium">Father's Name:</span> {partner.fathersName}</div>}
                           <div><span className="font-medium">Share:</span> {partner.share}</div>
+                          {partner.mobile && <div><span className="font-medium">Mobile:</span> {partner.mobile}</div>}
+                          {partner.alternativeNumber && <div><span className="font-medium">Alternative Number:</span> {partner.alternativeNumber}</div>}
+                          {partner.whatsappNumber && <div><span className="font-medium">WhatsApp:</span> {partner.whatsappNumber}</div>}
+                          {partner.emailId && <div><span className="font-medium">Email:</span> {partner.emailId}</div>}
+                          {partner.permanentAddress && <div><span className="font-medium">Permanent Address:</span> {partner.permanentAddress}</div>}
+                          {partner.temporaryAddress && <div><span className="font-medium">Temporary Address:</span> {partner.temporaryAddress}</div>}
                         </div>
                       ))}
                     </div>
@@ -600,6 +678,55 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               {/* Property Details */}
               <div className="mb-6 print:mb-4">
                 <h2 className="text-lg font-semibold border-b pb-1 mb-2">Property Details</h2>
+                
+                {/* Selected Polygon Area - Moved to top of Property Details in print view */}
+                {fieldCoordinates && fieldCoordinates.length > 2 && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-md border border-blue-200 print:bg-white print:border-gray-300">
+                    <h3 className="font-medium text-gray-700 mb-2">Selected Polygon Area</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(() => {
+                        // Calculate area using Google Maps geometry library
+                        try {
+                          // Create a path from the coordinates
+                          const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
+                          
+                          // Calculate area in square meters
+                          const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
+                          
+                          // Convert to different units
+                          const areaInHectares = areaInSqMeters / 10000;
+                          const areaInSqFeet = areaInSqMeters * 10.764;
+                          const areaInSqYards = areaInSqMeters * 1.196;
+                          
+                          return (
+                            <>
+                              <div>
+                                <span className="font-medium">Hectares:</span>{' '}
+                                <span>{areaInHectares.toFixed(4)} ha</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">Square Meters:</span>{' '}
+                                <span>{areaInSqMeters.toFixed(2)} m²</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">Square Feet:</span>{' '}
+                                <span>{areaInSqFeet.toFixed(2)} ft²</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">Square Yards:</span>{' '}
+                                <span>{areaInSqYards.toFixed(2)} yd²</span>
+                              </div>
+                            </>
+                          );
+                        } catch (error) {
+                          console.error("Error calculating area:", error);
+                          return null;
+                        }
+                      })()}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <span className="font-medium">Coordinates:</span> {formData.propertyAddress}
@@ -658,54 +785,6 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   )}
                 </div>
               </div>
-
-              {/* Selected Polygon Area */}
-              {fieldCoordinates && fieldCoordinates.length > 2 && (
-                <div className="mb-6 print:mb-4">
-                  <h2 className="text-lg font-semibold border-b pb-1 mb-2">Selected Polygon Area</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {(() => {
-                      // Calculate area using Google Maps geometry library
-                      try {
-                        // Create a path from the coordinates
-                        const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
-                        
-                        // Calculate area in square meters
-                        const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
-                        
-                        // Convert to different units
-                        const areaInHectares = areaInSqMeters / 10000;
-                        const areaInSqFeet = areaInSqMeters * 10.764;
-                        const areaInSqYards = areaInSqMeters * 1.196;
-                        
-                        return (
-                          <>
-                            <div>
-                              <span className="font-medium">Hectares:</span>{' '}
-                              <span>{areaInHectares.toFixed(4)} ha</span>
-                            </div>
-                            <div>
-                              <span className="font-medium">Square Meters:</span>{' '}
-                              <span>{areaInSqMeters.toFixed(2)} m²</span>
-                            </div>
-                            <div>
-                              <span className="font-medium">Square Feet:</span>{' '}
-                              <span>{areaInSqFeet.toFixed(2)} ft²</span>
-                            </div>
-                            <div>
-                              <span className="font-medium">Square Yards:</span>{' '}
-                              <span>{areaInSqYards.toFixed(2)} yd²</span>
-                            </div>
-                          </>
-                        );
-                      } catch (error) {
-                        console.error("Error calculating area:", error);
-                        return null;
-                      }
-                    })()}
-                  </div>
-                </div>
-              )}
 
               {/* Property Measurements */}
               {formData.propertyGroup !== 'govt' && (
@@ -1210,6 +1289,73 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
               <div>
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <h3 className="text-md font-medium text-gray-900 mb-3">Property Details</h3>
+                  
+                  {/* Selected Polygon Area Section - Moved to top of Property Details */}
+                  {fieldCoordinates && fieldCoordinates.length > 2 && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Polygon Area</h4>
+                      <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {(() => {
+                            // Calculate area using Google Maps geometry library
+                            const calculateArea = () => {
+                              try {
+                                // Create a path from the coordinates
+                                const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
+                                
+                                // Calculate area in square meters
+                                const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
+                                
+                                // Convert to different units
+                                const areaInHectares = areaInSqMeters / 10000;
+                                const areaInSqFeet = areaInSqMeters * 10.764;
+                                const areaInSqYards = areaInSqMeters * 1.196;
+                                
+                                return {
+                                  sqMeters: areaInSqMeters.toFixed(2),
+                                  hectares: areaInHectares.toFixed(4),
+                                  sqFeet: areaInSqFeet.toFixed(2),
+                                  sqYards: areaInSqYards.toFixed(2)
+                                };
+                              } catch (error) {
+                                console.error("Error calculating area:", error);
+                                return {
+                                  sqMeters: "0.00",
+                                  hectares: "0.0000",
+                                  sqFeet: "0.00",
+                                  sqYards: "0.00"
+                                };
+                              }
+                            };
+                            
+                            const areas = calculateArea();
+                            
+                            return (
+                              <>
+                                <div>
+                                  <span className="font-medium text-gray-700">Hectares:</span>
+                                  <span className="ml-2 text-blue-700 font-semibold">{areas.hectares} ha</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-700">Square Meters:</span>
+                                  <span className="ml-2 text-blue-700 font-semibold">{areas.sqMeters} m²</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-700">Square Feet:</span>
+                                  <span className="ml-2 text-blue-700 font-semibold">{areas.sqFeet} ft²</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-700">Square Yards:</span>
+                                  <span className="ml-2 text-blue-700 font-semibold">{areas.sqYards} yd²</span>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">
                       Coordinates
@@ -1252,9 +1398,267 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                   
                 
                   
-                  {/* Special/Corner Plot - Available for all property types */}
-          
+                  {/* Special/Corner   - Available for all property types */}
+                  <div className="mb-4 mt-4">
+                    <div className="flex items-center">
+                      <input
+                        id="corner-plot"
+                        type="checkbox"
+                        name="isCornerPlot"
+                        checked={formData.isCornerPlot}
+                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                      />
+                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
+                        This is a Special/Corner Plot
+                      </label>
+                    </div>
+                    
+                    {/* Show special plot type options when isCornerPlot is checked */}
+                    {formData.isCornerPlot && (
+                      <div className="mt-3 ml-6 p-3 bg-gray-50 rounded-md border border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">How is this plot special?</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="flex items-center">
+                            <input
+                              id="special-corner"
+                              type="radio"
+                              name="specialPlotType"
+                              value="corner"
+                              checked={formData.specialPlotType === 'corner'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-corner" className="ml-2 block text-sm text-gray-700">
+                              Corner Plot
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-park-facing"
+                              type="radio"
+                              name="specialPlotType"
+                              value="park_facing"
+                              checked={formData.specialPlotType === 'park_facing'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-park-facing" className="ml-2 block text-sm text-gray-700">
+                              Park Facing
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-double-corner"
+                              type="radio"
+                              name="specialPlotType"
+                              value="double_corner"
+                              checked={formData.specialPlotType === 'double_corner'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-double-corner" className="ml-2 block text-sm text-gray-700">
+                              Double Corner
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-two-side-open"
+                              type="radio"
+                              name="specialPlotType"
+                              value="two_side_open"
+                              checked={formData.specialPlotType === 'two_side_open'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-two-side-open" className="ml-2 block text-sm text-gray-700">
+                              Two Side Open
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-three-side-open"
+                              type="radio"
+                              name="specialPlotType"
+                              value="three_side_open"
+                              checked={formData.specialPlotType === 'three_side_open'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-three-side-open" className="ml-2 block text-sm text-gray-700">
+                              Three Side Open
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-main-road-facing"
+                              type="radio"
+                              name="specialPlotType"
+                              value="main_road_facing"
+                              checked={formData.specialPlotType === 'main_road_facing'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-main-road-facing" className="ml-2 block text-sm text-gray-700">
+                              Main Road Facing
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-cul-de-sac"
+                              type="radio"
+                              name="specialPlotType"
+                              value="cul_de_sac"
+                              checked={formData.specialPlotType === 'cul_de_sac'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-cul-de-sac" className="ml-2 block text-sm text-gray-700">
+                              Cul-de-sac Plot
+                            </label>
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              id="special-other"
+                              type="radio"
+                              name="specialPlotType"
+                              value="other"
+                              checked={formData.specialPlotType === 'other'}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-blue-600 border-gray-300"
+                            />
+                            <label htmlFor="special-other" className="ml-2 block text-sm text-gray-700">
+                              Other
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   
+               
+                  
+                  {/* Plot Facing Section - Add this new section */}
+                  <div className="mb-4">
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Plot Facing
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="flex items-center">
+                        <input
+                          id="facing-east"
+                          type="radio"
+                          name="plotFacing"
+                          value="east"
+                          checked={formData.plotFacing === 'east'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-east" className="ml-2 block text-sm text-gray-700">
+                          East
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-west"
+                          type="radio"
+                          name="plotFacing"
+                          value="west"
+                          checked={formData.plotFacing === 'west'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-west" className="ml-2 block text-sm text-gray-700">
+                          West
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-north"
+                          type="radio"
+                          name="plotFacing"
+                          value="north"
+                          checked={formData.plotFacing === 'north'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-north" className="ml-2 block text-sm text-gray-700">
+                          North
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-south"
+                          type="radio"
+                          name="plotFacing"
+                          value="south"
+                          checked={formData.plotFacing === 'south'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-south" className="ml-2 block text-sm text-gray-700">
+                          South
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-north-east"
+                          type="radio"
+                          name="plotFacing"
+                          value="north_east"
+                          checked={formData.plotFacing === 'north_east'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-north-east" className="ml-2 block text-sm text-gray-700">
+                          North-East
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-north-west"
+                          type="radio"
+                          name="plotFacing"
+                          value="north_west"
+                          checked={formData.plotFacing === 'north_west'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-north-west" className="ml-2 block text-sm text-gray-700">
+                          North-West
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-south-east"
+                          type="radio"
+                          name="plotFacing"
+                          value="south_east"
+                          checked={formData.plotFacing === 'south_east'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-south-east" className="ml-2 block text-sm text-gray-700">
+                          South-East
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="facing-south-west"
+                          type="radio"
+                          name="plotFacing"
+                          value="south_west"
+                          checked={formData.plotFacing === 'south_west'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="facing-south-west" className="ml-2 block text-sm text-gray-700">
+                          South-West
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Urban Property Details - Only visible for commercial, residential, industrial */}
                   {formData.propertyGroup !== 'agriculture' && formData.propertyGroup !== 'govt' && (
                     <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
@@ -1585,91 +1989,10 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       maxLength={6}
                     />
                   </div>
-                  <div className="mb-4 mt-4">
-                    <div className="flex items-center">
-                      <input
-                        id="corner-plot"
-                        type="checkbox"
-                        name="isCornerPlot"
-                        checked={formData.isCornerPlot}
-                        onChange={(e) => setFormData(prev => ({ ...prev, isCornerPlot: e.target.checked }))}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                      />
-                      <label htmlFor="corner-plot" className="ml-2 block text-sm font-medium text-gray-700">
-                        This is a Special/Corner Plot
-                      </label>
-                    </div>
-                  </div>
                   
                 </div>
               </div>
             </div>
-
-            {/* Selected Polygon Area Section */}
-            {fieldCoordinates && fieldCoordinates.length > 2 && (
-              <div>
-                <h3 className="text-md font-medium text-gray-900 mb-3 border-b pb-2">Selected Polygon Area</h3>
-                <div className="p-3 bg-blue-50 rounded-md border border-blue-200 mb-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(() => {
-                      // Calculate area using Google Maps geometry library
-                      const calculateArea = () => {
-                        try {
-                          // Create a path from the coordinates
-                          const path = fieldCoordinates.map(coord => new google.maps.LatLng(coord.lat, coord.lng));
-                          
-                          // Calculate area in square meters
-                          const areaInSqMeters = google.maps.geometry.spherical.computeArea(path);
-                          
-                          // Convert to different units
-                          const areaInHectares = areaInSqMeters / 10000;
-                          const areaInSqFeet = areaInSqMeters * 10.764;
-                          const areaInSqYards = areaInSqMeters * 1.196;
-                          
-                          return {
-                            sqMeters: areaInSqMeters.toFixed(2),
-                            hectares: areaInHectares.toFixed(4),
-                            sqFeet: areaInSqFeet.toFixed(2),
-                            sqYards: areaInSqYards.toFixed(2)
-                          };
-                        } catch (error) {
-                          console.error("Error calculating area:", error);
-                          return {
-                            sqMeters: "0.00",
-                            hectares: "0.0000",
-                            sqFeet: "0.00",
-                            sqYards: "0.00"
-                          };
-                        }
-                      };
-                      
-                      const areas = calculateArea();
-                      
-                      return (
-                        <>
-                          <div>
-                            <span className="font-medium text-gray-700">Hectares:</span>
-                            <span className="ml-2 text-blue-700 font-semibold">{areas.hectares} ha</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Square Meters:</span>
-                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqMeters} m²</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Square Feet:</span>
-                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqFeet} ft²</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Square Yards:</span>
-                            <span className="ml-2 text-blue-700 font-semibold">{areas.sqYards} yd²</span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 {/* Basic Info */}
