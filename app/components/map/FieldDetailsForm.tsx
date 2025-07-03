@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash, faMapMarkerAlt, faPrint, faArrowLeft, faEdit, faSave } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faUpload, faImage, faCheck, faPlus, faTrash, faMapMarkerAlt, faPrint, faArrowLeft, faEdit, faSave, faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 import { getFieldOwnerDetails } from '../../lib/firebase';
+import SpecialPlotDetails from './SpecialPlotDetails';
 
 interface FieldDetailsFormProps {
   isOpen: boolean;
@@ -139,6 +140,7 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [printView, setPrintView] = useState(false);
   const [editMode, setEditMode] = useState(true);
+  const [showSpecialPlotDetails, setShowSpecialPlotDetails] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Load existing field details when the form is opened
@@ -534,16 +536,27 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     </>
                   )}
                   {formData.isCornerPlot && (
-                    <div>
+                    <div className="flex items-center">
                       <span className="font-medium">Special Plot Type:</span>{' '}
-                      {formData.specialPlotType === 'corner' ? 'Corner Plot' :
-                       formData.specialPlotType === 'park_facing' ? 'Park Facing' :
-                       formData.specialPlotType === 'double_corner' ? 'Double Corner' :
-                       formData.specialPlotType === 'two_side_open' ? 'Two Side Open' :
-                       formData.specialPlotType === 'three_side_open' ? 'Three Side Open' :
-                       formData.specialPlotType === 'main_road_facing' ? 'Main Road Facing' :
-                       formData.specialPlotType === 'cul_de_sac' ? 'Cul-de-sac Plot' :
-                       formData.specialPlotType === 'other' ? 'Other' : 'Yes'}
+                      <span className="mr-2">
+                        {formData.specialPlotType === 'corner' ? 'Corner Plot' :
+                         formData.specialPlotType === 'park_facing' ? 'Park Facing' :
+                         formData.specialPlotType === 'double_corner' ? 'Double Corner' :
+                         formData.specialPlotType === 'two_side_open' ? 'Two Side Open' :
+                         formData.specialPlotType === 'three_side_open' ? 'Three Side Open' :
+                         formData.specialPlotType === 'main_road_facing' ? 'Main Road Facing' :
+                         formData.specialPlotType === 'cul_de_sac' ? 'Cul-de-sac Plot' :
+                         formData.specialPlotType === 'other' ? 'Other' : 'Yes'}
+                      </span>
+                      <button 
+                        type="button"
+                        onClick={() => setShowSpecialPlotDetails(true)}
+                        className="text-blue-600 text-xs hover:text-blue-800 print:hidden"
+                        title="View detailed information"
+                      >
+                        <FontAwesomeIcon icon={faInfoCircle} className="mr-1" />
+                        Details
+                      </button>
                     </div>
                   )}
                   {formData.plotFacing && (
@@ -986,6 +999,15 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
   // Render form view for editing
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] overflow-y-auto p-0 sm:p-2 md:p-6">
+      {/* Special Plot Details Modal */}
+      {showSpecialPlotDetails && (
+        <SpecialPlotDetails
+          specialPlotType={formData.specialPlotType}
+          isOpen={showSpecialPlotDetails}
+          onClose={() => setShowSpecialPlotDetails(false)}
+        />
+      )}
+      
       <div 
         ref={modalRef}
         className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative my-2 mx-auto"
@@ -1417,7 +1439,20 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                     {/* Show special plot type options when isCornerPlot is checked */}
                     {formData.isCornerPlot && (
                       <div className="mt-3 ml-6 p-3 bg-gray-50 rounded-md border border-gray-200">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">How is this plot special?</h4>
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="text-sm font-medium text-gray-700">How is this plot special?</h4>
+                          {formData.specialPlotType && (
+                            <button 
+                              type="button"
+                              onClick={() => setShowSpecialPlotDetails(true)}
+                              className="flex items-center text-blue-600 text-xs hover:text-blue-800"
+                              title="View detailed information"
+                            >
+                              <FontAwesomeIcon icon={faInfoCircle} className="mr-1" />
+                              View Details
+                            </button>
+                          )}
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div className="flex items-center">
                             <input
