@@ -523,7 +523,21 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                          formData.govtPropertyType === 'hospital' ? 'Hospital' :
                          formData.govtPropertyType === 'mining' ? 'Mining' :
                          formData.govtPropertyType === 'forest' ? 'Forest' :
-                         formData.govtPropertyType === 'department_office' ? 'Department Office' : ''}
+                         formData.govtPropertyType === 'department_office' ? 'Department Office' : 
+                         formData.govtPropertyType === 'railway' ? 'Railway' :
+                         formData.govtPropertyType === 'public_transport' ? 'Public Transport' :
+                         formData.govtPropertyType === 'guest_house' ? 'Guest House' :
+                         formData.govtPropertyType === 'police' ? 'Police' :
+                         formData.govtPropertyType === 'forces' ? 'Forces' :
+                         formData.govtPropertyType === 'sports' ? 'Sports' :
+                         formData.govtPropertyType === 'temple' ? 'Temple' :
+                         formData.govtPropertyType === 'cattle_reservation' ? 'Cattle Reservation Area' :
+                         formData.govtPropertyType === 'wildlife' ? 'Wildlife' :
+                         formData.govtPropertyType === 'old_age_home' ? 'Old Age Home' :
+                         formData.govtPropertyType === 'dharmsala' ? 'Dharmsala' :
+                         formData.govtPropertyType === 'school' ? 'School' :
+                         formData.govtPropertyType === 'college' ? 'College' :
+                         formData.govtPropertyType === 'university' ? 'University' : ''}
                       </div>
                       {formData.govtPropertySubType && (
                         <div>
@@ -711,6 +725,14 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                           const areaInSqFeet = areaInSqMeters * 10.764;
                           const areaInSqYards = areaInSqMeters * 1.196;
                           
+                          // Store these values for comparison
+                          const polygonAreas = {
+                            sqMeters: areaInSqMeters,
+                            hectares: areaInHectares,
+                            sqFeet: areaInSqFeet,
+                            sqYards: areaInSqYards
+                          };
+                          
                           return (
                             <>
                               <div>
@@ -729,6 +751,48 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                                 <span className="font-medium">Square Yards:</span>{' '}
                                 <span>{areaInSqYards.toFixed(2)} yd²</span>
                               </div>
+                              
+                              {/* Area Difference Section */}
+                              {formData.propertyArea && (
+                                <div className="col-span-1 sm:col-span-2 mt-3 pt-2 border-t border-blue-200 print:border-gray-200">
+                                  <h4 className="font-medium text-gray-700 mb-1">Difference from Inputed Area</h4>
+                                  {(() => {
+                                    // Convert inputed property area to square meters for comparison
+                                    let inputedAreaInSqMeters = parseFloat(formData.propertyArea) || 0;
+                                    
+                                    if (formData.propertyAreaUnit === 'square_foot') {
+                                      inputedAreaInSqMeters = inputedAreaInSqMeters * 0.0929;
+                                    } else if (formData.propertyAreaUnit === 'square_yard') {
+                                      inputedAreaInSqMeters = inputedAreaInSqMeters * 0.8361;
+                                    } else if (formData.propertyAreaUnit === 'square_km') {
+                                      inputedAreaInSqMeters = inputedAreaInSqMeters * 1000000;
+                                    }
+                                    
+                                    // Calculate difference
+                                    const difference = areaInSqMeters - inputedAreaInSqMeters;
+                                    const percentDifference = inputedAreaInSqMeters > 0 ? 
+                                      ((difference / inputedAreaInSqMeters) * 100).toFixed(2) : '0.00';
+                                    
+                                    // Format difference with sign
+                                    const formattedDifference = difference.toFixed(2);
+                                    const sign = difference >= 0 ? '+' : '';
+                                    
+                                    // Determine color based on difference
+                                    const textColor = difference > 0 ? 'text-green-600' : difference < 0 ? 'text-red-600' : 'text-gray-600';
+                                    
+                                    return (
+                                      <div className="flex items-center">
+                                        <span className={`font-semibold ${textColor}`}>
+                                          {sign}{formattedDifference} m² ({sign}{percentDifference}%)
+                                        </span>
+                                        <span className="ml-2 text-sm text-gray-500">
+                                          {difference > 0 ? 'larger than' : difference < 0 ? 'smaller than' : 'same as'} inputed area
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
                             </>
                           );
                         } catch (error) {
@@ -859,6 +923,105 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Calculated Area from Side Measurements */}
+              {(formData.northSideLength && formData.southSideLength && formData.eastSideLength && formData.westSideLength) ? (
+                <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-300 shadow-sm print:bg-white print:shadow-none">
+                  <h4 className="text-md font-semibold text-blue-800 mb-3 border-b border-blue-200 pb-2 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                    </svg>
+                    Calculated Area from Side Measurements
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {(() => {
+                      // Calculate area based on side lengths
+                      const calculateSideArea = () => {
+                        try {
+                          const north = parseFloat(formData.northSideLength) || 0;
+                          const south = parseFloat(formData.southSideLength) || 0;
+                          const east = parseFloat(formData.eastSideLength) || 0;
+                          const west = parseFloat(formData.westSideLength) || 0;
+                          
+                          // Calculate average of opposite sides
+                          const avgLength = (north + south) / 2;
+                          const avgWidth = (east + west) / 2;
+                          
+                          // Calculate area
+                          const area = avgLength * avgWidth;
+                          
+                          // Convert based on unit
+                          if (formData.sideLengthUnit === 'm') {
+                            // If in meters, convert to other units
+                            const areaInSqMeters = area;
+                            const areaInSqFeet = area * 10.764;
+                            const areaInSqYards = area * 1.196;
+                            const areaInHectares = area / 10000;
+                            
+                            return {
+                              sqMeters: areaInSqMeters.toFixed(2),
+                              sqFeet: areaInSqFeet.toFixed(2),
+                              sqYards: areaInSqYards.toFixed(2),
+                              hectares: areaInHectares.toFixed(4)
+                            };
+                          } else {
+                            // If in feet, convert to other units
+                            const areaInSqFeet = area;
+                            const areaInSqMeters = area * 0.0929;
+                            const areaInSqYards = area * 0.1111;
+                            const areaInHectares = areaInSqMeters / 10000;
+                            
+                            return {
+                              sqFeet: areaInSqFeet.toFixed(2),
+                              sqMeters: areaInSqMeters.toFixed(2),
+                              sqYards: areaInSqYards.toFixed(2),
+                              hectares: areaInHectares.toFixed(4)
+                            };
+                          }
+                        } catch (error) {
+                          console.error("Error calculating area:", error);
+                          return {
+                            sqMeters: "0.00",
+                            sqFeet: "0.00",
+                            sqYards: "0.00",
+                            hectares: "0.0000"
+                          };
+                        }
+                      };
+                      
+                      const areas = calculateSideArea();
+                      
+                      return (
+                        <>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Meters</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqMeters} m²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Feet</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqFeet} ft²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Yards</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqYards} yd²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Hectares</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.hectares} ha</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 text-sm text-gray-500 italic flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  Enter all four side lengths to see the calculated area
                 </div>
               )}
 
@@ -1182,130 +1345,604 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                           Department Office
                         </label>
                       </div>
-                    </div>
-
-                    {/* Subcategory selection based on selected government property type */}
-                    {formData.govtPropertyType && (
-                      <div className="mt-4 border-t border-gray-200 pt-3">
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Subcategory</h5>
-                        <select
-                          name="govtPropertySubType"
-                          value={formData.govtPropertySubType}
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-railway"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="railway"
+                          checked={formData.govtPropertyType === 'railway'}
                           onChange={handleInputChange}
-                          className="w-full p-2 border border-gray-300 rounded-md"
-                        >
-                          <option value="">Select Subcategory</option>
-                          
-                          {/* Water subcategories */}
-                          {formData.govtPropertyType === 'water' && (
-                            <>
-                              <option value="river">River</option>
-                              <option value="lake">Lake</option>
-                              <option value="pond">Pond</option>
-                              <option value="canal">Canal</option>
-                              <option value="dam">Dam</option>
-                              <option value="reservoir">Reservoir</option>
-                              <option value="watershed">Watershed</option>
-                              <option value="water_treatment">Water Treatment Plant</option>
-                            </>
-                          )}
-                          
-                          {/* Roads subcategories */}
-                          {formData.govtPropertyType === 'roads' && (
-                            <>
-                              <option value="national_highway">National Highway</option>
-                              <option value="state_highway">State Highway</option>
-                              <option value="district_road">District Road</option>
-                              <option value="village_road">Village Road</option>
-                              <option value="city_road">City Road</option>
-                              <option value="expressway">Expressway</option>
-                              <option value="bypass">Bypass</option>
-                              <option value="bridge">Bridge</option>
-                              <option value="flyover">Flyover</option>
-                            </>
-                          )}
-                          
-                          {/* Electric subcategories */}
-                          {formData.govtPropertyType === 'electric' && (
-                            <>
-                              <option value="power_plant">Power Plant</option>
-                              <option value="substation">Substation</option>
-                              <option value="transmission_line">Transmission Line</option>
-                              <option value="distribution_center">Distribution Center</option>
-                              <option value="solar_plant">Solar Plant</option>
-                              <option value="wind_farm">Wind Farm</option>
-                              <option value="hydro_power">Hydro Power Station</option>
-                              <option value="thermal_power">Thermal Power Station</option>
-                            </>
-                          )}
-                          
-                          {/* Hospital subcategories */}
-                          {formData.govtPropertyType === 'hospital' && (
-                            <>
-                              <option value="district_hospital">District Hospital</option>
-                              <option value="community_health_center">Community Health Center</option>
-                              <option value="primary_health_center">Primary Health Center</option>
-                              <option value="sub_center">Sub Center</option>
-                              <option value="medical_college">Medical College</option>
-                              <option value="specialty_hospital">Specialty Hospital</option>
-                              <option value="dispensary">Dispensary</option>
-                              <option value="ayush_center">AYUSH Center</option>
-                            </>
-                          )}
-                          
-                          {/* Mining subcategories */}
-                          {formData.govtPropertyType === 'mining' && (
-                            <>
-                              <option value="coal_mine">Coal Mine</option>
-                              <option value="stone_mine">Stone Mine</option>
-                              <option value="sand_mine">Sand Mine</option>
-                              <option value="mineral_mine">Mineral Mine</option>
-                              <option value="metal_mine">Metal Mine</option>
-                              <option value="clay_mine">Clay Mine</option>
-                              <option value="gravel_mine">Gravel Mine</option>
-                              <option value="quarry">Quarry</option>
-                            </>
-                          )}
-                          
-                          {/* Forest subcategories */}
-                          {formData.govtPropertyType === 'forest' && (
-                            <>
-                              <option value="reserved_forest">Reserved Forest</option>
-                              <option value="protected_forest">Protected Forest</option>
-                              <option value="village_forest">Village Forest</option>
-                              <option value="wildlife_sanctuary">Wildlife Sanctuary</option>
-                              <option value="national_park">National Park</option>
-                              <option value="biosphere_reserve">Biosphere Reserve</option>
-                              <option value="tiger_reserve">Tiger Reserve</option>
-                              <option value="community_forest">Community Forest</option>
-                            </>
-                          )}
-                          
-                          {/* Department Office subcategories */}
-                          {formData.govtPropertyType === 'department_office' && (
-                            <>
-                              <option value="collectorate">Collectorate</option>
-                              <option value="tehsil_office">Tehsil Office</option>
-                              <option value="panchayat_office">Panchayat Office</option>
-                              <option value="police_station">Police Station</option>
-                              <option value="court">Court</option>
-                              <option value="education_dept">Education Department</option>
-                              <option value="revenue_dept">Revenue Department</option>
-                              <option value="agriculture_dept">Agriculture Department</option>
-                              <option value="forest_dept">Forest Department</option>
-                              <option value="pwd">Public Works Department</option>
-                              <option value="health_dept">Health Department</option>
-                              <option value="irrigation_dept">Irrigation Department</option>
-                            </>
-                          )}
-                        </select>
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-railway" className="ml-2 block text-sm text-gray-700">
+                          Railway
+                        </label>
                       </div>
-                    )}
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-public-transport"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="public_transport"
+                          checked={formData.govtPropertyType === 'public_transport'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-public-transport" className="ml-2 block text-sm text-gray-700">
+                          Public Transport
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-guest-house"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="guest_house"
+                          checked={formData.govtPropertyType === 'guest_house'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-guest-house" className="ml-2 block text-sm text-gray-700">
+                          Guest House
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-police"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="police"
+                          checked={formData.govtPropertyType === 'police'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-police" className="ml-2 block text-sm text-gray-700">
+                          Police
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-forces"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="forces"
+                          checked={formData.govtPropertyType === 'forces'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-forces" className="ml-2 block text-sm text-gray-700">
+                          Forces
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-sports"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="sports"
+                          checked={formData.govtPropertyType === 'sports'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-sports" className="ml-2 block text-sm text-gray-700">
+                          Sports
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-temple"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="temple"
+                          checked={formData.govtPropertyType === 'temple'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-temple" className="ml-2 block text-sm text-gray-700">
+                          Temple
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-cattle-reservation"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="cattle_reservation"
+                          checked={formData.govtPropertyType === 'cattle_reservation'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-cattle-reservation" className="ml-2 block text-sm text-gray-700">
+                          Cattle Reservation Area
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-wildlife"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="wildlife"
+                          checked={formData.govtPropertyType === 'wildlife'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-wildlife" className="ml-2 block text-sm text-gray-700">
+                          Wildlife
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-old-age-home"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="old_age_home"
+                          checked={formData.govtPropertyType === 'old_age_home'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-old-age-home" className="ml-2 block text-sm text-gray-700">
+                          Old Age Home
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-dharmsala"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="dharmsala"
+                          checked={formData.govtPropertyType === 'dharmsala'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-dharmsala" className="ml-2 block text-sm text-gray-700">
+                          Dharmsala
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-school"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="school"
+                          checked={formData.govtPropertyType === 'school'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-school" className="ml-2 block text-sm text-gray-700">
+                          School
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-college"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="college"
+                          checked={formData.govtPropertyType === 'college'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-college" className="ml-2 block text-sm text-gray-700">
+                          College
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="govt-university"
+                          type="radio"
+                          name="govtPropertyType"
+                          value="university"
+                          checked={formData.govtPropertyType === 'university'}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300"
+                        />
+                        <label htmlFor="govt-university" className="ml-2 block text-sm text-gray-700">
+                          University
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
               
-       
+              {/* Subcategory selection based on selected government property type */}
+              {formData.govtPropertyType && (
+                <div className="mt-4 border-t border-gray-200 pt-3">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Subcategory</h5>
+                  <select
+                    name="govtPropertySubType"
+                    value={formData.govtPropertySubType}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="">Select Subcategory</option>
+                    
+                    {/* Water subcategories */}
+                    {formData.govtPropertyType === 'water' && (
+                      <>
+                        <option value="river">River</option>
+                        <option value="naala">Naala</option>
+                        <option value="canal">Canal</option>
+                        <option value="talab">Talab</option>
+                        <option value="pond">Pond</option>
+                        <option value="waste_water_naala">Waste Water Naala</option>
+                        <option value="lake">Lake</option>
+                        <option value="water_fall">Water Fall</option>
+                        <option value="rainysigen_river">Rainy Season  River</option>
+                        <option value="rainysigen_naala">Rainy Season Naala</option>
+                        <option value="sevrage_area">Severage Area</option>
+                        <option value="sevrage_treatment_plant">Sevrage Treatment Plant</option>
+                        <option value="water_treatment">Water Treatment Plant</option>
+                        <option value="dam_area">Dam Area</option>
+                        <option value="dam_water_supply_pipeline">Dam Water Supply Pipeline</option>
+                        <option value="phed_overhead_tank">PHED Overhead Tank</option>
+                        <option value="phed_underground_tank">PHED Underground Tank</option>
+                        <option value="pump_house">Pump House</option>
+                        <option value="left_canal">Left Canal</option>
+                        <option value="drange">Dranage</option>
+                      </>
+                    )}
+                    
+                    {/* Roads subcategories */}
+                    {formData.govtPropertyType === 'roads' && (
+                      <>
+                        <option value="national_highway">National Highway</option>
+                        <option value="state_highway">State Highway</option>
+                        <option value="district_road">District Road</option>
+                        <option value="village_road">Village Road</option>
+                        <option value="city_road">City Road</option>
+                        <option value="expressway">Expressway</option>
+                        <option value="bypass">Bypass</option>
+                        <option value="bridge">Bridge</option>
+                        <option value="flyover">Flyover</option>
+                      </>
+                    )}
+                    
+                    {/* Electric subcategories */}
+                    {formData.govtPropertyType === 'electric' && (
+                      <>
+                        {/* Power Plants */}
+                        <option value="power_plant">Power Plant (General)</option>
+                        <option value="nuclear_power_plant">Nuclear Power Plant</option>
+                        <option value="coal_power_plant">Coal Power Plant</option>
+                        <option value="hydro_power_plant">Hydro Power Plant</option>
+                        <option value="wind_turbine">Wind Turbine</option>
+                        <option value="solar_plant">Solar Power Plant</option>
+                        
+                        {/* Distribution Lines */}
+                        <option value="electricity_distribution_line">Electricity Distribution Line (General)</option>
+                        <option value="ultra_high_voltage_800kv">Ultra High Voltage 800 kV</option>
+                        <option value="extra_high_voltage_345kv">Extra High Voltage 345 kV</option>
+                        <option value="extra_high_voltage_440kv">Extra High Voltage 440 kV</option>
+                        <option value="extra_high_voltage_465kv">Extra High Voltage 465 kV</option>
+                        <option value="extra_high_voltage_765kv">Extra High Voltage 765 kV</option>
+                        <option value="high_voltage_115kv_to_230kv">High Voltage (115 kV to 230 kV)</option>
+                        <option value="medium_voltage_1kv_to_69kv">Medium Voltage (1 kV to 69 kV)</option>
+                        <option value="low_voltage_less_than_1kv">Low Voltage (Less than 1 kV)</option>
+                        <option value="11kv_400v">11 kV - 400 V</option>
+                        <option value="33kv_440v">33 kV - 440 V</option>
+                        <option value="132kv">132 kV</option>
+                        
+                        {/* Other Electric Infrastructure */}
+                        <option value="substation">Substation</option>
+                        <option value="transmission_line">Transmission Line</option>
+                        <option value="distribution_center">Distribution Center</option>
+                      </>
+                    )}
+                    
+                    {/* Hospital subcategories */}
+                    {formData.govtPropertyType === 'hospital' && (
+                      <>
+                        <option value="district_hospital">District Hospital</option>
+                        <option value="community_health_center">Community Health Center</option>
+                        <option value="primary_health_center">Primary Health Center</option>
+                        <option value="sub_center">Sub Center</option>
+                        <option value="medical_college">Medical College</option>
+                        <option value="specialty_hospital">Specialty Hospital</option>
+                        <option value="dispensary">Dispensary</option>
+                        <option value="ayush_center">AYUSH Center</option>
+                      </>
+                    )}
+                    
+                    {/* Mining subcategories */}
+                    {formData.govtPropertyType === 'mining' && (
+                      <>
+                        {/* Main Categories */}
+                        <option value="metal_mining">Metal Mining</option>
+                        <option value="rock_mining">Rock Mining</option>
+                        <option value="petroleum_mining">Petroleum Mining</option>
+                        <option value="gas_mining">Gas Mining</option>
+                        
+                        {/* Metal Mining Subcategories */}
+                        <option value="gold_mining">Metal Mining - Gold</option>
+                        <option value="silver_mining">Metal Mining - Silver</option>
+                        <option value="copper_mining">Metal Mining - Copper</option>
+                        <option value="iron_mining">Metal Mining - Iron</option>
+                        <option value="aluminum_mining">Metal Mining - Aluminum</option>
+                        <option value="zinc_mining">Metal Mining - Zinc</option>
+                        <option value="lead_mining">Metal Mining - Lead</option>
+                        <option value="titanium_mining">Metal Mining - Titanium</option>
+                        <option value="other_metal_mining">Metal Mining - Other</option>
+                        
+                        {/* Rock Mining Subcategories */}
+                        <option value="aggregate_stone_mining">Rock Mining - Aggregate Stone</option>
+                        <option value="gypsum_mining">Rock Mining - Gypsum</option>
+                        <option value="coal_mining">Rock Mining - Coal</option>
+                        <option value="lignite_mining">Rock Mining - Lignite</option>
+                        <option value="limestone_mining">Rock Mining - Limestone</option>
+                        <option value="marble_mining">Rock Mining - Marble</option>
+                        <option value="granite_mining">Rock Mining - Granite</option>
+                        <option value="sandstone_mining">Rock Mining - Sandstone</option>
+                        <option value="other_rock_mining">Rock Mining - Other</option>
+                        
+                        {/* Petroleum Mining Subcategories */}
+                        <option value="refinery">Petroleum Mining - Refinery</option>
+                        <option value="oil_well">Petroleum Mining - Oil Well</option>
+                        <option value="oil_field">Petroleum Mining - Oil Field</option>
+                        <option value="crude_oil_processing">Petroleum Mining - Crude Oil Processing</option>
+                        <option value="petroleum_storage">Petroleum Mining - Storage Facility</option>
+                        <option value="other_petroleum_mining">Petroleum Mining - Other</option>
+                        
+                        {/* Gas Mining Subcategories */}
+                        <option value="lpg">Gas Mining - LPG</option>
+                        <option value="cng">Gas Mining - CNG</option>
+                        <option value="natural_gas">Gas Mining - Natural Gas</option>
+                        <option value="gas_processing">Gas Mining - Gas Processing</option>
+                        <option value="gas_storage">Gas Mining - Gas Storage</option>
+                        <option value="other_gas_mining">Gas Mining - Other</option>
+                        
+                        {/* Legacy options */}
+                        <option value="coal_mine">Coal Mine</option>
+                        <option value="stone_mine">Stone Mine</option>
+                        <option value="sand_mine">Sand Mine</option>
+                        <option value="mineral_mine">Mineral Mine</option>
+                        <option value="metal_mine">Metal Mine</option>
+                        <option value="clay_mine">Clay Mine</option>
+                        <option value="gravel_mine">Gravel Mine</option>
+                        <option value="quarry">Quarry</option>
+                      </>
+                    )}
+                    
+                    {/* Forest subcategories */}
+                    {formData.govtPropertyType === 'forest' && (
+                      <>
+                        <option value="reserved_forest">Reserved Forest</option>
+                        <option value="protected_forest">Protected Forest</option>
+                        <option value="village_forest">Village Forest</option>
+                        <option value="wildlife_sanctuary">Wildlife Sanctuary</option>
+                        <option value="national_park">National Park</option>
+                        <option value="biosphere_reserve">Biosphere Reserve</option>
+                        <option value="tiger_reserve">Tiger Reserve</option>
+                        <option value="community_forest">Community Forest</option>
+                      </>
+                    )}
+                    
+                    {/* Department Office subcategories */}
+                    {formData.govtPropertyType === 'department_office' && (
+                      <>
+                        <option value="collectorate">Collectorate</option>
+                        <option value="tehsil_office">Tehsil Office</option>
+                        <option value="panchayat_office">Panchayat Office</option>
+                        <option value="police_station">Police Station</option>
+                        <option value="court">Court</option>
+                        <option value="education_dept">Education Department</option>
+                        <option value="revenue_dept">Revenue Department</option>
+                        <option value="agriculture_dept">Agriculture Department</option>
+                        <option value="forest_dept">Forest Department</option>
+                        <option value="pwd">Public Works Department</option>
+                        <option value="health_dept">Health Department</option>
+                        <option value="irrigation_dept">Irrigation Department</option>
+                      </>
+                    )}
+                    
+                    {/* Railway subcategories */}
+                    {formData.govtPropertyType === 'railway' && (
+                      <>
+                        <option value="railway_station">Railway Station</option>
+                        <option value="metro_train">Metro Train</option>
+                        <option value="railway_crossing">Railway Crossing</option>
+                        <option value="railway_bridge">Railway Bridge</option>
+                        <option value="railway_underpass">Railway Underpass</option>
+                        <option value="railway_flyover">Railway Flyover</option>
+                        <option value="railway_subway">Railway Subway</option>
+                        <option value="railway_depot">Railway Depot</option>
+                        <option value="railway_factory">Railway Factory</option>
+                        <option value="railway_fatak">Railway Fatak</option>
+                        <option value="railway_power_house">Railway Power House</option>
+                        <option value="railway_electricity_line">Railway Electricity Line</option>
+                        <option value="railway_cargo_yard">Railway Cargo Yard</option>
+                        <option value="railway_service_station">Railway Service Station</option>
+                        <option value="railway_line">Railway Line</option>
+                        <option value="meter_gauge">Meter Gauge</option>
+                        <option value="broad_gauge">Broad Gauge</option>
+                        <option value="railway_track">Railway Track</option>
+                        <option value="railway_yard">Railway Yard</option>
+                        <option value="railway_workshop">Railway Workshop</option>
+                        <option value="railway_colony">Railway Colony</option>
+                        <option value="railway_office">Railway Office</option>
+                        <option value="railway_land">Railway Land</option>
+                      </>
+                    )}
+                    
+                    {/* Public Transport subcategories */}
+                    {formData.govtPropertyType === 'public_transport' && (
+                      <>
+                        <option value="bus_station">Bus Station</option>
+                        <option value="bus_depot">Bus Depot</option>
+                        <option value="bus_terminal">Bus Terminal</option>
+                        <option value="transport_office">Transport Office</option>
+                        <option value="metro_station">Metro Station</option>
+                        <option value="metro_depot">Metro Depot</option>
+                      </>
+                    )}
+                    
+                    {/* Guest House subcategories */}
+                    {formData.govtPropertyType === 'guest_house' && (
+                      <>
+                        <option value="circuit_house">Circuit House</option>
+                        <option value="pwd_rest_house">PWD Rest House</option>
+                        <option value="forest_rest_house">Forest Rest House</option>
+                        <option value="irrigation_rest_house">Irrigation Rest House</option>
+                        <option value="govt_guest_house">Government Guest House</option>
+                        <option value="dak_bungalow">Dak Bungalow</option>
+                      </>
+                    )}
+                    
+                    {/* Police subcategories */}
+                    {formData.govtPropertyType === 'police' && (
+                      <>
+                        <option value="police_station">Police Station</option>
+                        <option value="police_chowki">Police Chowki</option>
+                        <option value="police_line">Police Line</option>
+                        <option value="police_training_center">Police Training Center</option>
+                        <option value="police_headquarters">Police Headquarters</option>
+                        <option value="police_housing">Police Housing</option>
+                      </>
+                    )}
+                    
+                    {/* Forces subcategories */}
+                    {formData.govtPropertyType === 'forces' && (
+                      <>
+                        <option value="army_cantonment">Army Cantonment</option>
+                        <option value="army_camp">Army Camp</option>
+                        <option value="air_force_station">Air Force Station</option>
+                        <option value="naval_base">Naval Base</option>
+                        <option value="bsf_camp">BSF Camp</option>
+                        <option value="crpf_camp">CRPF Camp</option>
+                        <option value="cisf_camp">CISF Camp</option>
+                        <option value="itbp_camp">ITBP Camp</option>
+                        <option value="ssb_camp">SSB Camp</option>
+                      </>
+                    )}
+                    
+                    {/* Sports subcategories */}
+                    {formData.govtPropertyType === 'sports' && (
+                      <>
+                        <option value="stadium">Stadium</option>
+                        <option value="sports_complex">Sports Complex</option>
+                        <option value="playground">Playground</option>
+                        <option value="swimming_pool">Swimming Pool</option>
+                        <option value="sports_academy">Sports Academy</option>
+                        <option value="sports_hostel">Sports Hostel</option>
+                        <option value="shooting_range">Shooting Range</option>
+                      </>
+                    )}
+                    
+                    {/* Temple subcategories */}
+                    {formData.govtPropertyType === 'temple' && (
+                      <>
+                        <option value="temple">Temple</option>
+                        <option value="mosque">Mosque</option>
+                        <option value="church">Church</option>
+                        <option value="gurudwara">Gurudwara</option>
+                        <option value="buddhist_monastery">Buddhist Monastery</option>
+                        <option value="jain_temple">Jain Temple</option>
+                        <option value="religious_trust_land">Religious Trust Land</option>
+                      </>
+                    )}
+                    
+                    {/* Cattle Reservation subcategories */}
+                    {formData.govtPropertyType === 'cattle_reservation' && (
+                      <>
+                        <option value="gaushala">Gaushala</option>
+                        <option value="cattle_farm">Cattle Farm</option>
+                        <option value="grazing_land">Grazing Land</option>
+                        <option value="animal_husbandry_center">Animal Husbandry Center</option>
+                        <option value="veterinary_hospital">Veterinary Hospital</option>
+                      </>
+                    )}
+                    
+                    {/* Wildlife subcategories */}
+                    {formData.govtPropertyType === 'wildlife' && (
+                      <>
+                        <option value="wildlife_sanctuary">Wildlife Sanctuary</option>
+                        <option value="national_park">National Park</option>
+                        <option value="tiger_reserve">Tiger Reserve</option>
+                        <option value="bird_sanctuary">Bird Sanctuary</option>
+                        <option value="conservation_reserve">Conservation Reserve</option>
+                        <option value="zoo">Zoo</option>
+                      </>
+                    )}
+                    
+                    {/* Old Age Home subcategories */}
+                    {formData.govtPropertyType === 'old_age_home' && (
+                      <>
+                        <option value="govt_old_age_home">Government Old Age Home</option>
+                        <option value="senior_citizen_center">Senior Citizen Center</option>
+                        <option value="care_home">Care Home</option>
+                      </>
+                    )}
+                    
+                    {/* Dharmsala subcategories */}
+                    {formData.govtPropertyType === 'dharmsala' && (
+                      <>
+                        <option value="dharmsala">Dharmsala</option>
+                        <option value="community_center">Community Center</option>
+                        <option value="rain_basera">Rain Basera</option>
+                        <option value="night_shelter">Night Shelter</option>
+                      </>
+                    )}
+                    
+                    {/* School subcategories */}
+                    {formData.govtPropertyType === 'school' && (
+                      <>
+                        <option value="primary_school">Primary School</option>
+                        <option value="middle_school">Middle School</option>
+                        <option value="high_school">High School</option>
+                        <option value="senior_secondary_school">Senior Secondary School</option>
+                        <option value="kendriya_vidyalaya">Kendriya Vidyalaya</option>
+                        <option value="navodaya_vidyalaya">Navodaya Vidyalaya</option>
+                        <option value="sainik_school">Sainik School</option>
+                        <option value="tribal_school">Tribal School</option>
+                      </>
+                    )}
+                    
+                    {/* College subcategories */}
+                    {formData.govtPropertyType === 'college' && (
+                      <>
+                        <option value="govt_college">Government College</option>
+                        <option value="engineering_college">Engineering College</option>
+                        <option value="medical_college">Medical College</option>
+                        <option value="law_college">Law College</option>
+                        <option value="commerce_college">Commerce College</option>
+                        <option value="arts_college">Arts College</option>
+                        <option value="science_college">Science College</option>
+                        <option value="polytechnic">Polytechnic</option>
+                        <option value="iti">ITI</option>
+                      </>
+                    )}
+                    
+                    {/* University subcategories */}
+                    {formData.govtPropertyType === 'university' && (
+                      <>
+                        <option value="state_university">State University</option>
+                        <option value="central_university">Central University</option>
+                        <option value="agricultural_university">Agricultural University</option>
+                        <option value="technical_university">Technical University</option>
+                        <option value="medical_university">Medical University</option>
+                        <option value="law_university">Law University</option>
+                        <option value="open_university">Open University</option>
+                        <option value="deemed_university">Deemed University</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
 
               {/* Property Measurements Section */}
               <div>
@@ -1332,6 +1969,14 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                                 const areaInHectares = areaInSqMeters / 10000;
                                 const areaInSqFeet = areaInSqMeters * 10.764;
                                 const areaInSqYards = areaInSqMeters * 1.196;
+                                
+                                // Store these values for comparison
+                                const polygonAreas = {
+                                  sqMeters: areaInSqMeters,
+                                  hectares: areaInHectares,
+                                  sqFeet: areaInSqFeet,
+                                  sqYards: areaInSqYards
+                                };
                                 
                                 return {
                                   sqMeters: areaInSqMeters.toFixed(2),
@@ -1370,6 +2015,50 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                                   <span className="font-medium text-gray-700">Square Yards:</span>
                                   <span className="ml-2 text-blue-700 font-semibold">{areas.sqYards} yd²</span>
                                 </div>
+                                
+                                {/* Area Difference Section */}
+                                {formData.propertyArea && (
+                                  <div className="col-span-1 sm:col-span-2 mt-3 pt-3 border-t border-blue-200">
+                                    <h4 className="font-medium text-gray-700 mb-2">Difference from Inputed Area</h4>
+                                    {(() => {
+                                      // Convert inputed property area to square meters for comparison
+                                      let inputedAreaInSqMeters = parseFloat(formData.propertyArea) || 0;
+                                      
+                                      if (formData.propertyAreaUnit === 'square_foot') {
+                                        inputedAreaInSqMeters = inputedAreaInSqMeters * 0.0929;
+                                      } else if (formData.propertyAreaUnit === 'square_yard') {
+                                        inputedAreaInSqMeters = inputedAreaInSqMeters * 0.8361;
+                                      } else if (formData.propertyAreaUnit === 'square_km') {
+                                        inputedAreaInSqMeters = inputedAreaInSqMeters * 1000000;
+                                      }
+                                      
+                                      // Calculate difference
+                                      const areaInSqMeters = parseFloat(areas.sqMeters);
+                                      const difference = areaInSqMeters - inputedAreaInSqMeters;
+                                      const percentDifference = inputedAreaInSqMeters > 0 ? 
+                                        ((difference / inputedAreaInSqMeters) * 100).toFixed(2) : '0.00';
+                                      
+                                      // Format difference with sign
+                                      const formattedDifference = difference.toFixed(2);
+                                      const sign = difference >= 0 ? '+' : '';
+                                      
+                                      // Determine color based on difference
+                                      const textColor = difference > 0 ? 'text-green-600' : difference < 0 ? 'text-red-600' : 'text-gray-600';
+                                      const bgColor = difference > 0 ? 'bg-green-50' : difference < 0 ? 'bg-red-50' : 'bg-gray-50';
+                                      
+                                      return (
+                                        <div className={`p-2 rounded-md ${bgColor} border border-gray-200 flex flex-col sm:flex-row sm:items-center`}>
+                                          <span className={`font-semibold text-lg ${textColor}`}>
+                                            {sign}{formattedDifference} m² ({sign}{percentDifference}%)
+                                          </span>
+                                          <span className="ml-0 sm:ml-2 text-sm text-gray-500">
+                                            {difference > 0 ? 'larger than' : difference < 0 ? 'smaller than' : 'same as'} inputed area
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
                               </>
                             );
                           })()}
@@ -2007,6 +2696,105 @@ const FieldDetailsForm: React.FC<FieldDetailsFormProps> = ({
                           </div>
                         </div>
                       </div>
+                      
+                      {/* Calculated Area from Side Measurements */}
+                      {(formData.northSideLength && formData.southSideLength && formData.eastSideLength && formData.westSideLength) ? (
+                        <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-300 shadow-sm print:bg-white print:shadow-none">
+                  <h4 className="text-md font-semibold text-blue-800 mb-3 border-b border-blue-200 pb-2 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                    </svg>
+                    Calculated Area from Side Measurements
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {(() => {
+                              // Calculate area based on side lengths
+                              const calculateSideArea = () => {
+                                try {
+                                  const north = parseFloat(formData.northSideLength) || 0;
+                                  const south = parseFloat(formData.southSideLength) || 0;
+                                  const east = parseFloat(formData.eastSideLength) || 0;
+                                  const west = parseFloat(formData.westSideLength) || 0;
+                                  
+                                  // Calculate average of opposite sides
+                                  const avgLength = (north + south) / 2;
+                                  const avgWidth = (east + west) / 2;
+                                  
+                                  // Calculate area
+                                  const area = avgLength * avgWidth;
+                                  
+                                  // Convert based on unit
+                                  if (formData.sideLengthUnit === 'm') {
+                                    // If in meters, convert to other units
+                                    const areaInSqMeters = area;
+                                    const areaInSqFeet = area * 10.764;
+                                    const areaInSqYards = area * 1.196;
+                                    const areaInHectares = area / 10000;
+                                    
+                                    return {
+                                      sqMeters: areaInSqMeters.toFixed(2),
+                                      sqFeet: areaInSqFeet.toFixed(2),
+                                      sqYards: areaInSqYards.toFixed(2),
+                                      hectares: areaInHectares.toFixed(4)
+                                    };
+                                  } else {
+                                    // If in feet, convert to other units
+                                    const areaInSqFeet = area;
+                                    const areaInSqMeters = area * 0.0929;
+                                    const areaInSqYards = area * 0.1111;
+                                    const areaInHectares = areaInSqMeters / 10000;
+                                    
+                                    return {
+                                      sqFeet: areaInSqFeet.toFixed(2),
+                                      sqMeters: areaInSqMeters.toFixed(2),
+                                      sqYards: areaInSqYards.toFixed(2),
+                                      hectares: areaInHectares.toFixed(4)
+                                    };
+                                  }
+                                } catch (error) {
+                                  console.error("Error calculating area:", error);
+                                  return {
+                                    sqMeters: "0.00",
+                                    sqFeet: "0.00",
+                                    sqYards: "0.00",
+                                    hectares: "0.0000"
+                                  };
+                                }
+                              };
+                              
+                              const areas = calculateSideArea();
+                              
+                              return (
+                                <>
+                                                            <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Meters</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqMeters} m²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Feet</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqFeet} ft²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Square Yards</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.sqYards} yd²</span>
+                          </div>
+                          <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100 flex flex-col print:border-gray-200">
+                            <span className="text-xs text-blue-600 uppercase font-medium mb-1 print:text-gray-600">Hectares</span>
+                            <span className="text-xl text-blue-800 font-bold print:text-gray-800">{areas.hectares} ha</span>
+                          </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      ) : (
+                                        <div className="mt-3 text-sm text-gray-500 italic flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  Enter all four side lengths to see the calculated area
+                </div>
+                      )}
                     </>
                   )}
 
